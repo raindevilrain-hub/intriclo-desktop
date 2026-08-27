@@ -46,6 +46,8 @@ import {
   stopAllServers,
   uninstallPython,
   validateRemoteUrl,
+  isPrivateHost,
+  isPrivateUrl,
   type AppConfig,
   type Connection
 } from './utils'
@@ -1370,30 +1372,36 @@ if (!gotTheLock) {
 
     // ─── Self-Signed / Untrusted Certificate Support ─
     // Allow connections to Open WebUI instances that use self-signed or
-    // otherwise untrusted SSL certificates (issue #108). The user
-    // explicitly configures the server URL, so trusting all certs is
-    // acceptable — this matches the behaviour of VS Code, Postman, and
-    // other Electron apps used in enterprise/self-hosted environments.
+    // otherwise untrusted SSL certificates (issue #108) — but only on the
+    // local network. Public hosts keep normal validation: the update feed
+    // (github.com) and the Slack login page must not be MITM-able, and
+    // trusting everything would make an unsigned auto-update installable
+    // by anyone on the path.
     app.on('certificate-error', (event, _webContents, url, error, certificate, callback) => {
+      const allow = isPrivateUrl(url)
       log.warn(
         `Certificate error: ${error} for ${url} ` +
-        `(subject: ${certificate.subjectName}, issuer: ${certificate.issuerName})`
+        `(subject: ${certificate.subjectName}, issuer: ${certificate.issuerName}) ` +
+        `→ ${allow ? 'allowed (private network)' : 'rejected'}`
       )
+      if (!allow) return // leave it to Chromium: the request fails
       event.preventDefault()
       callback(true)
     })
 
-    // Trust all certs on the default session (used by net.fetch() in
+    // Same rule for the default session (used by net.fetch() in
     // validateRemoteUrl / checkUrlAndOpen).
-    session.defaultSession.setCertificateVerifyProc((_request, callback) => {
-      callback(0) // 0 = verified/trusted
+    session.defaultSession.setCertificateVerifyProc((request, callback) => {
+      // 0 = trust it anyway, -3 = use Chromium's own verification result
+      callback(isPrivateHost(request.hostname) ? 0 : -3)
     })
 
-    // Webviews use partitioned sessions (persist:connection-*). Each
-    // new partition's session also needs to trust all certs.
+    // Webviews use partitioned sessions (persist:connection-*), and
+    // electron-updater creates its own session too — this hook covers
+    // both, so the private-host rule has to hold here as well.
     app.on('session-created', (newSession) => {
-      newSession.setCertificateVerifyProc((_request, callback) => {
-        callback(0)
+      newSession.setCertificateVerifyProc((request, callback) => {
+        callback(isPrivateHost(request.hostname) ? 0 : -3)
       })
 
       // Grant media / notification permissions for webview partition sessions

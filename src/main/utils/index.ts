@@ -790,6 +790,44 @@ export const checkUrlAndOpen = async (url: string, callback: Function = async ()
   })
 }
 
+// Self-signed certificates are a fact of life on a LAN — a self-hosted
+// Open WebUI on a NAS rarely has a publicly trusted cert (issue #108).
+// They have no business on the public internet though: github.com (where
+// auto-updates come from) and slack.com (where staff type their company
+// password) must get real certificate validation. So the trust-anything
+// escape hatch is limited to hosts that can only be reached from inside
+// the local network.
+export const isPrivateHost = (hostname: string): boolean => {
+  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+
+  if (host === 'localhost' || host === '::1' || host.endsWith('.local')) return true
+  // Bare names with no dot are LAN-only (NetBIOS / mDNS short names).
+  if (!host.includes('.') && !host.includes(':')) return true
+
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])]
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 192 && b === 168) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 169 && b === 254) // link-local
+    )
+  }
+
+  // IPv6 unique-local (fc00::/7) and link-local (fe80::/10)
+  return /^f[cd]/.test(host) || /^fe[89ab]/.test(host)
+}
+
+export const isPrivateUrl = (url: string): boolean => {
+  try {
+    return isPrivateHost(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
 export const validateRemoteUrl = async (url: string): Promise<boolean> => {
   try {
     const response = await electronNet.fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
