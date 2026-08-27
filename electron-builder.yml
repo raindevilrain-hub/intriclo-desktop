@@ -90,3 +90,4 @@ publish:
   provider: github
   owner: raindevilrain-hub
   repo: intriclo-desktop
+  releaseType: release
