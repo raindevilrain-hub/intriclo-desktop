@@ -916,7 +916,26 @@ export const getConfig = async (): Promise<AppConfig> => {
   try {
     if (fs.existsSync(configPath)) {
       const data = await fs.promises.readFile(configPath, 'utf8')
-      return { ...DEFAULT_CONFIG, ...JSON.parse(data) }
+      const saved = JSON.parse(data)
+      const merged = { ...DEFAULT_CONFIG, ...saved }
+      // ponytail: NAS 기본연결 도입 전 버전(v0.0.20 등)이 남긴 "connections: [],
+      // defaultConnectionId: 'local'" stock 상태를 그대로 물려받으면, 이후 아무리
+      // 새 버전을 깔아도 기본연결이 영원히 안 심어짐(저장된 값이 항상 이김) - 실사용자가
+      // 실제로 커스터마이징한 적 없는 이 특정 stock 시그니처를 감지해서 딱 한 번만
+      // 새 기본값으로 복구한다. 사용자가 이후 직접 연결을 지우거나 바꾸면 그 값은
+      // 더 이상 이 시그니처와 안 맞으므로 정상적으로 보존된다.
+      const looksUntouched =
+        Array.isArray(saved.connections) &&
+        saved.connections.length === 0 &&
+        (saved.defaultConnectionId === 'local' || !saved.defaultConnectionId) &&
+        !saved.mailAssistantUrl &&
+        !saved.slackUrl
+      if (looksUntouched) {
+        merged.connections = DEFAULT_CONFIG.connections
+        merged.defaultConnectionId = DEFAULT_CONFIG.defaultConnectionId
+        merged.mailAssistantUrl = DEFAULT_CONFIG.mailAssistantUrl
+      }
+      return merged
     }
     return { ...DEFAULT_CONFIG }
   } catch (error) {
