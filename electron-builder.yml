@@ -20,7 +20,7 @@ win:
   executableName: intriclo-desktop
 nsis:
   oneClick: false
-  artifactName: ${name}-${arch}-setup.${ext}
+  artifactName: ${name}-${version}-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -34,7 +34,7 @@ mac:
       arch:
         - x64
         - arm64
-  artifactName: ${name}-${arch}-mac.${ext}
+  artifactName: ${name}-${version}-${arch}-mac.${ext}
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -44,7 +44,7 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
 dmg:
   background: build/dmg-background.png
-  artifactName: ${name}-${arch}.${ext}
+  artifactName: ${name}-${version}-${arch}.${ext}
   title: ${productName}
   contents:
     - x: 225
@@ -63,11 +63,11 @@ linux:
   maintainer: openwebui.com
   category: Utility
 deb:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: ${name}_${version}_${arch}.${ext}
 snap:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: ${name}_${version}_${arch}.${ext}
 appImage:
-  artifactName: ${name}_${arch}.${ext}
+  artifactName: ${name}_${version}_${arch}.${ext}
 flatpak:
   base: org.electronjs.Electron2.BaseApp
   baseVersion: '23.08'
