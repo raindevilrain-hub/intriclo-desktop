@@ -93,8 +93,12 @@
 
   <!-- Connection list -->
   <div class="flex-1 min-h-0 overflow-y-auto px-2">
-    <!-- Pinned: Open WebUI (local) -->
-    {#if localConn && localInstalled}
+    <!-- Pinned: Open WebUI (local) — 사내용 포크에서는 항상 숨김. 다들 NAS 서버로
+         연결하는 구조라 "내 컴퓨터에 로컬 서버 띄우기" 옵션은 직원들에게 불필요하고
+         혼란만 준다(잘못 눌러 불필요한 로컬 다운로드가 시작될 수 있음). 예전 테스트 중
+         우연히 로컬 설치 파일이 깔려서 localInstalled가 true인 사람도 있을 수 있지만,
+         그 값과 무관하게 이 블록 자체를 항상 숨긴다. -->
+    {#if false && localConn && localInstalled}
       {@const isServerLoading =
         connectingId === localConn.id ||
         serverStatus === 'starting' ||
@@ -232,7 +236,7 @@
       </div>
     {/if}
 
-    {#if localConn && localInstalled && remoteConnections.length > 0}
+    {#if false && localConn && localInstalled && remoteConnections.length > 0}
       <div class="my-1 mx-2 border-t border-black/[0.04] dark:border-white/[0.04]"></div>
     {/if}
 
