@@ -1,0 +1,14 @@
+# 취약점 알림만으로는 사람이 안 보고 넘어가서, 주 1회 PR 로 올라오게 한다.
+# 34대에 자동 배포되는 앱이라 electron / electron-updater 계열이 특히 중요하다.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

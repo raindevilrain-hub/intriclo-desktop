@@ -26,9 +26,14 @@ jobs:
           npm version patch --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           git commit -am "ci: v$NEW_VERSION 자동 버전업 [skip ci]"
-          git push
+          # 짧은 간격으로 push 가 겹치면 non-fast-forward 로 잡 전체가 죽는다.
+          git push || (git pull --rebase && git push)
 
-      - run: npm install --ignore-scripts
+      # npm install 은 lock 을 갱신할 수 있어 빌드마다 버전이 조용히 달라진다.
+      # npm ci 는 package-lock.json 그대로만 설치한다.
+      # --ignore-scripts: node-pty 의 postinstall 이 Windows 러너에서 실패하는데,
+      # prebuild 바이너리가 패키지에 동봉돼 있어 컴파일이 애초에 필요없다.
+      - run: npm ci --ignore-scripts
       - run: node node_modules/electron/install.js
 
       - name: 빌드 + 배포 (한글 productName이 makensis로 깨지지 않게 콘솔 코드페이지를 UTF-8로 전환한 같은 셸에서 실행)
