@@ -864,13 +864,16 @@ export interface AppConfig {
 // once a real domain is assigned; nothing else in the codebase hardcodes them.
 const DEFAULT_NAS_SERVER_URL = 'http://192.168.0.210:3099'
 const DEFAULT_MAIL_ASSISTANT_URL = 'http://192.168.0.210:5080'
+const DEFAULT_SLACK_URL = 'https://w1735528368-mo2137373.slack.com'
 
 const DEFAULT_CONFIG: AppConfig = {
   version: 1,
   defaultConnectionId: 'default-nas',
   connections: [
     { id: 'default-nas', name: '인트리클로 AI', type: 'remote', url: DEFAULT_NAS_SERVER_URL },
-    { id: 'default-mail-assistant', name: 'Mail Assistant', type: 'remote', url: DEFAULT_MAIL_ASSISTANT_URL }
+    { id: 'default-mail-assistant', name: 'Mail Assistant', type: 'remote', url: DEFAULT_MAIL_ASSISTANT_URL },
+    // name은 반드시 정확히 'Slack'이어야 connectionPartition.ts의 공유세션 매칭과 맞음
+    { id: 'default-slack', name: 'Slack', type: 'remote', url: DEFAULT_SLACK_URL }
   ],
   runInBackground: true,
   globalShortcut: 'Alt+CommandOrControl+O',
@@ -906,9 +909,7 @@ const DEFAULT_CONFIG: AppConfig = {
   widgetMode: false,
   widgetPosition: null,
   mailAssistantUrl: DEFAULT_MAIL_ASSISTANT_URL,
-  // Real Slack workspace URL not confirmed yet — left blank on purpose so the
-  // user fills it in via Settings > Connections like before (no guessing).
-  slackUrl: ''
+  slackUrl: DEFAULT_SLACK_URL
 }
 
 export const getConfig = async (): Promise<AppConfig> => {
@@ -934,6 +935,7 @@ export const getConfig = async (): Promise<AppConfig> => {
         merged.connections = DEFAULT_CONFIG.connections
         merged.defaultConnectionId = DEFAULT_CONFIG.defaultConnectionId
         merged.mailAssistantUrl = DEFAULT_CONFIG.mailAssistantUrl
+        merged.slackUrl = DEFAULT_CONFIG.slackUrl
       }
       return merged
     }

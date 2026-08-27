@@ -7,8 +7,8 @@
 // keeps its own isolated partition, unchanged.
 const SHARED_PARTITION = 'persist:intriclo-shared'
 
-// Fixed ids for the two default connections shipped in DEFAULT_CONFIG.
-const SHARED_IDS = new Set(['default-nas', 'default-mail-assistant'])
+// Fixed ids for the default connections shipped in DEFAULT_CONFIG.
+const SHARED_IDS = new Set(['default-nas', 'default-mail-assistant', 'default-slack'])
 
 // Mail Assistant / Slack connections added later via Settings get a random
 // id (crypto.randomUUID()), so fall back to matching the exact name used
