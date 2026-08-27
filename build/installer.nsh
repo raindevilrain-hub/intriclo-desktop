@@ -33,7 +33,9 @@
   ; be turned off. Best-effort enable if it's off; never touch SetErrorLevel
   ; and never let a failure (no admin, feature not found, PS missing, ...)
   ; reach the installer — the try/catch below always exits 0.
-  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { $f = Get-WindowsOptionalFeature -Online -FeatureName QuickAssist -ErrorAction Stop; if ($f.State -ne \"Enabled\") { Enable-WindowsOptionalFeature -Online -FeatureName QuickAssist -NoRestart -ErrorAction Stop } } catch { exit 0 }"'
+  ; NB: $$ below is NSIS's escape for a literal "$" (this string is PowerShell
+  ; source, not NSIS — a bare $f here would be parsed as an NSIS variable).
+  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "try { $$f = Get-WindowsOptionalFeature -Online -FeatureName QuickAssist -ErrorAction Stop; if ($$f.State -ne \"Enabled\") { Enable-WindowsOptionalFeature -Online -FeatureName QuickAssist -NoRestart -ErrorAction Stop } } catch { exit 0 }"'
   Pop $0
   ClearErrors
 !macroend

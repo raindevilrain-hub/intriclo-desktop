@@ -30,7 +30,12 @@ jobs:
 
       - run: npm install --ignore-scripts
       - run: node node_modules/electron/install.js
-      - run: npm run build && npx electron-builder --win --publish always
+
+      - name: 빌드 + 배포 (한글 productName이 makensis로 깨지지 않게 콘솔 코드페이지를 UTF-8로 전환한 같은 셸에서 실행)
+        shell: cmd
+        run: |
+          chcp 65001
+          npm run build && npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
