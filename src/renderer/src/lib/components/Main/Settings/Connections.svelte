@@ -2,11 +2,111 @@
   import { connections, config } from '../../../stores'
   import i18n from '../../../i18n'
 
+  let mailAssistantUrl = $state('')
+  let slackUrl = $state('')
+
+  $effect(() => {
+    mailAssistantUrl = $config?.mailAssistantUrl ?? ''
+    slackUrl = $config?.slackUrl ?? ''
+  })
+
   const remove = async (id: string) => {
     await window.electronAPI.removeConnection(id)
     config.set(await window.electronAPI.getConfig())
   }
+
+  const saveMailAssistantUrl = async () => {
+    await window.electronAPI.setConfig({ mailAssistantUrl: mailAssistantUrl.trim() })
+    config.set(await window.electronAPI.getConfig())
+  }
+
+  // Mail Assistant is just a second Connection (own webview partition ⇒
+  // own login/session, isolated from Open WebUI) pointed at the URL
+  // configured above — no new sidebar/webview plumbing needed.
+  const mailAssistantAdded = $derived(
+    ($connections ?? []).some((c) => c.url === mailAssistantUrl && mailAssistantUrl !== '')
+  )
+
+  const addMailAssistant = async () => {
+    if (!mailAssistantUrl.trim() || mailAssistantAdded) return
+    await window.electronAPI.addConnection({
+      id: crypto.randomUUID(),
+      name: 'Mail Assistant',
+      type: 'remote',
+      url: mailAssistantUrl.trim()
+    })
+    config.set(await window.electronAPI.getConfig())
+  }
+
+  const saveSlackUrl = async () => {
+    await window.electronAPI.setConfig({ slackUrl: slackUrl.trim() })
+    config.set(await window.electronAPI.getConfig())
+  }
+
+  // Slack DM is also just a second/third Connection (own webview partition ⇒
+  // own login/session) pointed at the URL configured above — same pattern
+  // as Mail Assistant, no new sidebar/webview plumbing needed.
+  const slackAdded = $derived(($connections ?? []).some((c) => c.url === slackUrl && slackUrl !== ''))
+
+  const addSlack = async () => {
+    if (!slackUrl.trim() || slackAdded) return
+    await window.electronAPI.addConnection({
+      id: crypto.randomUUID(),
+      name: 'Slack',
+      type: 'remote',
+      url: slackUrl.trim()
+    })
+    config.set(await window.electronAPI.getConfig())
+  }
 </script>
+
+<div class="pb-4 mb-1 border-b border-white/[0.04]">
+  <label class="block text-[11px] text-gray-400 dark:text-gray-500 mb-1.5"
+    >{$i18n.t('settings.connections.mailAssistantUrl')}</label
+  >
+  <div class="flex items-center gap-2">
+    <input
+      type="text"
+      bind:value={mailAssistantUrl}
+      onblur={saveMailAssistantUrl}
+      onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+      placeholder={$i18n.t('settings.connections.mailAssistantUrlPlaceholder')}
+      class="flex-1 py-2 text-[13px] text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-20 outline-none bg-transparent border-none border-b border-black/[0.08] dark:border-white/[0.08]"
+    />
+    <button
+      class="shrink-0 text-[11px] px-3 py-1.5 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] opacity-60 hover:opacity-90 transition border-none text-[#1d1d1f] dark:text-[#fafafa] cursor-pointer disabled:opacity-20 disabled:cursor-default"
+      onclick={addMailAssistant}
+      disabled={!mailAssistantUrl.trim() || mailAssistantAdded}
+    >
+      {mailAssistantAdded
+        ? $i18n.t('settings.connections.mailAssistantAdded')
+        : $i18n.t('settings.connections.addMailAssistant')}
+    </button>
+  </div>
+</div>
+
+<div class="pb-4 mb-1 border-b border-white/[0.04]">
+  <label class="block text-[11px] text-gray-400 dark:text-gray-500 mb-1.5"
+    >{$i18n.t('settings.connections.slackUrl')}</label
+  >
+  <div class="flex items-center gap-2">
+    <input
+      type="text"
+      bind:value={slackUrl}
+      onblur={saveSlackUrl}
+      onkeydown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+      placeholder={$i18n.t('settings.connections.slackUrlPlaceholder')}
+      class="flex-1 py-2 text-[13px] text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-20 outline-none bg-transparent border-none border-b border-black/[0.08] dark:border-white/[0.08]"
+    />
+    <button
+      class="shrink-0 text-[11px] px-3 py-1.5 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] opacity-60 hover:opacity-90 transition border-none text-[#1d1d1f] dark:text-[#fafafa] cursor-pointer disabled:opacity-20 disabled:cursor-default"
+      onclick={addSlack}
+      disabled={!slackUrl.trim() || slackAdded}
+    >
+      {slackAdded ? $i18n.t('settings.connections.slackAdded') : $i18n.t('settings.connections.addSlack')}
+    </button>
+  </div>
+</div>
 
 <div class="flex flex-col divide-y divide-white/[0.04]">
   {#each $connections as conn}

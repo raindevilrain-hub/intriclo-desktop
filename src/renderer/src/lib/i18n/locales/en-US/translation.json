@@ -271,6 +271,14 @@
 
   "settings.connections.remove": "Remove",
   "settings.connections.noConnections": "No connections",
+  "settings.connections.mailAssistantUrl": "Mail Assistant URL",
+  "settings.connections.mailAssistantUrlPlaceholder": "http://<NAS IP>:5080",
+  "settings.connections.addMailAssistant": "Add as Connection",
+  "settings.connections.mailAssistantAdded": "Added",
+  "settings.connections.slackUrl": "Slack DM URL",
+  "settings.connections.slackUrlPlaceholder": "https://<workspace>.slack.com",
+  "settings.connections.addSlack": "Add as Connection",
+  "settings.connections.slackAdded": "Added",
 
   "settings.about.desktopVersion": "Desktop Version",
   "settings.about.openWebuiVersion": "Open WebUI Version",

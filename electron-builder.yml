@@ -1,5 +1,5 @@
-appId: com.openwebui.desktop
-productName: Open WebUI
+appId: com.intriclo.desktop
+productName: IntriClo
 directories:
   buildResources: build
 files:
@@ -17,7 +17,7 @@ asarUnpack:
   - resources/**
   - node_modules/node-pty/**
 win:
-  executableName: open-webui
+  executableName: intriclo-desktop
 nsis:
   artifactName: ${name}-${arch}-setup.${ext}
   shortcutName: ${productName}
@@ -84,5 +84,5 @@ flatpak:
 npmRebuild: true
 publish:
   provider: github
-  owner: open-webui
-  repo: desktop
+  owner: raindevilrain-hub
+  repo: intriclo-desktop

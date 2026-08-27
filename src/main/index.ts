@@ -51,6 +51,14 @@ import {
 } from './utils'
 
 import {
+  expandBounds,
+  collapseBounds,
+  snapXToNearestEdge,
+  defaultWidgetPosition,
+  WIDGET_ICON_SIZE
+} from './utils/widget-geometry'
+
+import {
   startOpenTerminal,
   stopOpenTerminal,
   getOpenTerminalInfo,
@@ -152,6 +160,8 @@ let mainWindow: BrowserWindow | null = null
 let contentWindow: BrowserWindow | null = null
 let spotlightWindow: BrowserWindow | null = null
 let voiceInputWindow: BrowserWindow | null = null
+let widgetWindow: BrowserWindow | null = null
+let widgetExpanded = false
 let tray: Tray | null = null
 let isQuiting = false
 
@@ -566,6 +576,109 @@ async function toggleCall(): Promise<void> {
   }
 }
 
+// ─── Floating Widget ────────────────────────────────────
+// A small always-on-top circular icon (docked to a screen edge) that
+// expands into a panel showing the default connection, similar to a
+// customer-support chat bubble. This is an additional, opt-in mode
+// (toggled from the tray) — it never replaces the normal window flow.
+
+const WIDGET_MOVE_DEBOUNCE_MS = 500
+
+function createWidgetWindow(): BrowserWindow {
+  const { screen } = require('electron')
+  const primaryWorkArea = screen.getPrimaryDisplay().workArea
+  const saved = CONFIG?.widgetPosition
+  const pos =
+    saved && isBoundsOnVisibleDisplay(saved) ? saved : defaultWidgetPosition(primaryWorkArea)
+
+  widgetExpanded = false
+
+  widgetWindow = new BrowserWindow({
+    x: pos.x,
+    y: pos.y,
+    width: WIDGET_ICON_SIZE,
+    height: WIDGET_ICON_SIZE,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    show: false,
+    focusable: true,
+    icon: path.join(__dirname, 'assets/icon.png'),
+    webPreferences: {
+      preload: join(__dirname, '../preload/widget-preload.js'),
+      sandbox: false,
+      webviewTag: true
+    }
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    widgetWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/widget.html`)
+  } else {
+    widgetWindow.loadFile(join(__dirname, '../renderer/widget.html'))
+  }
+
+  widgetWindow.on('ready-to-show', () => {
+    widgetWindow?.show()
+  })
+
+  // Debounced drag-end handling: once the window settles after a drag,
+  // snap it horizontally to the nearest screen edge and persist the
+  // resulting docked (icon) position — mirrors debounceSaveWindowBounds
+  // above for the main window.
+  let widgetMoveTimer: ReturnType<typeof setTimeout> | null = null
+  widgetWindow.on('move', () => {
+    if (widgetMoveTimer) clearTimeout(widgetMoveTimer)
+    widgetMoveTimer = setTimeout(() => {
+      if (!widgetWindow || widgetWindow.isDestroyed()) return
+      const bounds = widgetWindow.getBounds()
+      const display = screen.getDisplayNearestPoint({
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2
+      })
+      const snappedX = snapXToNearestEdge(bounds.x, bounds.width, display.workArea)
+      if (snappedX !== bounds.x) {
+        widgetWindow.setPosition(snappedX, bounds.y)
+      }
+      // collapseBounds derives the docked icon anchor from any rect's
+      // bottom-right corner — a no-op when already icon-sized, so this
+      // works whether the widget is currently collapsed or expanded.
+      const iconPos = collapseBounds({ ...bounds, x: snappedX })
+      setConfig({ widgetPosition: { x: iconPos.x, y: iconPos.y } }).catch((err) =>
+        log.warn('Failed to save widget position:', err)
+      )
+    }, WIDGET_MOVE_DEBOUNCE_MS)
+  })
+
+  widgetWindow.on('closed', () => {
+    widgetWindow = null
+  })
+
+  return widgetWindow
+}
+
+function showWidget(): void {
+  if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.show()
+    return
+  }
+  createWidgetWindow()
+}
+
+async function toggleWidgetMode(): Promise<void> {
+  const enabled = !(CONFIG?.widgetMode === true)
+  await setConfig({ widgetMode: enabled })
+  CONFIG = await getConfig()
+  if (enabled) {
+    showWidget()
+  } else if (widgetWindow && !widgetWindow.isDestroyed()) {
+    widgetWindow.close()
+  }
+  updateTray()
+}
+
 // ─── Windows ────────────────────────────────────────────
 
 const DEFAULT_WINDOW_WIDTH = 1280
@@ -800,6 +913,14 @@ const updateTray = () => {
       click: () => {
         mainWindow?.show()
         mainWindow?.focus()
+      }
+    },
+    {
+      label: 'Floating Widget',
+      type: 'checkbox',
+      checked: CONFIG.widgetMode === true,
+      click: () => {
+        toggleWidgetMode()
       }
     },
     { type: 'separator' },
@@ -1649,6 +1770,45 @@ if (!gotTheLock) {
       )
     })
 
+    // Floating widget: toggle between the docked icon and the expanded
+    // panel. Resizes the window in place and (only when expanding) resolves
+    // the current default connection URL for the renderer's <webview>.
+    ipcMain.handle('widget:toggle', async () => {
+      if (!widgetWindow || widgetWindow.isDestroyed()) {
+        return { expanded: false, url: null }
+      }
+      const { screen } = require('electron')
+      const currentBounds = widgetWindow.getBounds()
+      const display = screen.getDisplayNearestPoint({
+        x: currentBounds.x + currentBounds.width / 2,
+        y: currentBounds.y + currentBounds.height / 2
+      })
+
+      widgetExpanded = !widgetExpanded
+      const newBounds = widgetExpanded
+        ? expandBounds(currentBounds, display.workArea)
+        : collapseBounds(currentBounds)
+      widgetWindow.setBounds(newBounds)
+
+      // Persist the docked (icon) anchor regardless of state.
+      const iconPos = collapseBounds(newBounds)
+      setConfig({ widgetPosition: { x: iconPos.x, y: iconPos.y } }).catch((err) =>
+        log.warn('Failed to save widget position:', err)
+      )
+
+      let url: string | null = null
+      if (widgetExpanded) {
+        try {
+          const conn = await getDefaultConnection()
+          url = conn ? resolveConnectionUrl(conn) : null
+        } catch (err: any) {
+          log.warn('widget:toggle — failed to resolve default connection:', err)
+        }
+      }
+
+      return { expanded: widgetExpanded, url }
+    })
+
     // Capture a region of the screen (called from Spotlight renderer after drag)
     ipcMain.handle(
       'spotlight:captureRegion',
@@ -2199,6 +2359,11 @@ if (!gotTheLock) {
       initUpdater(mainWindow)
     }
 
+    // Resume floating widget mode if it was enabled last session
+    if (CONFIG.widgetMode) {
+      showWidget()
+    }
+
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
       else {
@@ -2230,6 +2395,10 @@ if (!gotTheLock) {
       voiceInputWindow.destroy()
     }
     voiceInputWindow = null
+    if (widgetWindow && !widgetWindow.isDestroyed()) {
+      widgetWindow.destroy()
+    }
+    widgetWindow = null
     tray?.destroy()
     tray = null
   })

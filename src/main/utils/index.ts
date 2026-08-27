@@ -845,6 +845,17 @@ export interface AppConfig {
   callEnabled: boolean
   windowBounds: { x: number; y: number; width: number; height: number } | null
   windowMaximized: boolean
+  widgetMode: boolean
+  widgetPosition: { x: number; y: number } | null
+  // URL of the internal Mail Assistant service (separate Docker container,
+  // its own auth). Not hardcoded — set once in Settings > Connections, then
+  // added as a regular Connection so it gets its own isolated webview
+  // session (persist:connection-<id>), same as any other remote connection.
+  mailAssistantUrl: string
+  // URL of the company Slack workspace web client (e.g. https://<workspace>.slack.com).
+  // Not hardcoded — set once in Settings > Connections, then added as a regular
+  // Connection so it gets its own isolated webview session, same as Mail Assistant.
+  slackUrl: string
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -881,7 +892,11 @@ const DEFAULT_CONFIG: AppConfig = {
   callShortcut: 'Shift+CommandOrControl+C',
   callEnabled: true,
   windowBounds: null,
-  windowMaximized: false
+  windowMaximized: false,
+  widgetMode: false,
+  widgetPosition: null,
+  mailAssistantUrl: '',
+  slackUrl: ''
 }
 
 export const getConfig = async (): Promise<AppConfig> => {
