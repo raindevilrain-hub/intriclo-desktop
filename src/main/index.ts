@@ -1322,7 +1322,10 @@ if (!gotTheLock) {
     loadSpotlightPosition()
     log.info('Config:', CONFIG)
 
-    app.name = '인트리클로 AI'
+    // ponytail: app.name은 userData 경로(%APPDATA%\<app.name>) 등 내부 경로 계산에
+    // 쓰이는 기술 식별자라서 한글로 바꾸지 않는다(한글 경로에서 config.json을 못 찾거나
+    // 매 실행마다 경로가 달라지는 버그로 이어짐 - 실사용자 실측으로 확인됨). 화면에 보이는
+    // "인트리클로 AI" 표시는 About 패널/트레이 텍스트 등 별도 필드로 이미 처리돼 있음.
     if (process.platform === 'darwin' && app.dock) {
       app.dock.setIcon(icon)
     }
