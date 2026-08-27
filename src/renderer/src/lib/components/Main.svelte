@@ -119,6 +119,11 @@
       />
     </div>
 
+    <!-- Signature badge — our own shell only, never over a webview's own content -->
+    <div class="absolute bottom-1.5 right-2.5 z-40 pointer-events-none select-none text-[10px] opacity-25">
+      v{$appInfo?.version ?? ''} · Made by 도형이형
+    </div>
+
     {#if settingsOpen}
       <div
         class="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"

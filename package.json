@@ -2,7 +2,7 @@
   "name": "intriclo-desktop",
   "version": "0.0.20",
   "license": "AGPL-3.0",
-  "description": "Open WebUI Desktop",
+  "description": "인트리클로 AI 데스크톱",
   "main": "./out/main/index.js",
   "author": "Open WebUI Inc. (Timothy Jaeryang Baek)",
   "homepage": "https://openwebui.com",

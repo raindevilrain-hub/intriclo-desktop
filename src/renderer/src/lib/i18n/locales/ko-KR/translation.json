@@ -1,6 +1,6 @@
 {
-  "app.name": "Open WebUI",
-  "app.desktop": "Open WebUI 데스크톱",
+  "app.name": "인트리클로 AI",
+  "app.desktop": "인트리클로 AI 데스크톱",
   "common.loading": "로딩 중…",
   "common.cancel": "취소",
   "common.close": "닫기",
@@ -265,6 +265,6 @@
   "settings.about.whatsNew": "새로운 기능",
   "settings.about.noChangelog": "아직 변경 기록이 없습니다.",
   "settings.about.viewOnGithub": "GitHub에서 보기 →",
-  "settings.about.copyright": "Copyright (c) 2026 Open WebUI Inc. All rights reserved.",
+  "settings.about.copyright": "Copyright (c) 2026 인트리클로 AI. All rights reserved.",
   "settings.about.createdBy": "Created by Timothy J. Baek"
 }

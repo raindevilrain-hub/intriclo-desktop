@@ -18,6 +18,16 @@ jobs:
         with:
           node-version: 22
 
+      - name: 버전 자동 증가 (patch) + 커밋
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          npm version patch --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          git commit -am "ci: v$NEW_VERSION 자동 버전업 [skip ci]"
+          git push
+
       - run: npm install --ignore-scripts
       - run: node node_modules/electron/install.js
       - run: npm run build && npx electron-builder --win --publish always

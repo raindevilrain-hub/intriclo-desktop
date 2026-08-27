@@ -248,7 +248,7 @@ const registerShortcuts = (globalAccel?: string, spotlightAccel?: string, voiceI
 
   // Global shortcut – bring main window to foreground
   if (globalAccel) {
-    tryRegisterShortcut(globalAccel, 'Open WebUI', () => {
+    tryRegisterShortcut(globalAccel, '인트리클로 AI', () => {
       if (mainWindow) {
         mainWindow.show()
         mainWindow.focus()
@@ -909,7 +909,7 @@ const updateTray = () => {
 
   const trayMenuTemplate = [
     {
-      label: 'Show Open WebUI',
+      label: 'Show 인트리클로 AI',
       click: () => {
         mainWindow?.show()
         mainWindow?.focus()
@@ -943,7 +943,7 @@ const updateTray = () => {
         ]
       : []),
     {
-      label: 'Quit Open WebUI',
+      label: 'Quit 인트리클로 AI',
       accelerator: 'CommandOrControl+Q',
       click: async () => {
         await stopServerHandler()
@@ -1281,10 +1281,10 @@ const resetAppHandler = async () => {
     await new Promise((resolve) => setTimeout(resolve, 1000))
     await resetApp()
     CONFIG = await getConfig() // reload from defaults since config.json was deleted
-    new Notification({ title: 'Open WebUI', body: 'Application has been reset.' }).show()
+    new Notification({ title: '인트리클로 AI', body: 'Application has been reset.' }).show()
   } catch (error) {
     log.error('Failed to reset:', error)
-    new Notification({ title: 'Open WebUI', body: `Reset failed: ${error.message}` }).show()
+    new Notification({ title: '인트리클로 AI', body: `Reset failed: ${error.message}` }).show()
   }
 }
 
@@ -1309,12 +1309,12 @@ if (!gotTheLock) {
   })
 
   app.setAboutPanelOptions({
-    applicationName: 'Open WebUI',
+    applicationName: '인트리클로 AI',
     iconPath: icon,
     applicationVersion: app.getVersion(),
     version: app.getVersion(),
     website: 'https://openwebui.com',
-    copyright: `© ${new Date().getFullYear()} Open WebUI`
+    copyright: `© ${new Date().getFullYear()} 인트리클로 AI`
   })
 
   app.whenReady().then(async () => {
@@ -1322,7 +1322,7 @@ if (!gotTheLock) {
     loadSpotlightPosition()
     log.info('Config:', CONFIG)
 
-    app.name = 'Open WebUI'
+    app.name = '인트리클로 AI'
     if (process.platform === 'darwin' && app.dock) {
       app.dock.setIcon(icon)
     }
@@ -1821,7 +1821,7 @@ if (!gotTheLock) {
               log.warn(`spotlight:captureRegion — screen recording permission: ${status}`)
               new Notification({
                 title: 'Screen Recording Permission Required',
-                body: 'Open WebUI needs Screen Recording access to capture screenshots. Please enable it in System Settings → Privacy & Security → Screen Recording, then restart the app.'
+                body: '인트리클로 AI needs Screen Recording access to capture screenshots. Please enable it in System Settings → Privacy & Security → Screen Recording, then restart the app.'
               }).show()
               // Open the correct System Preferences pane
               shell.openExternal(
@@ -2281,7 +2281,7 @@ if (!gotTheLock) {
     // Create tray
     const trayIcon = nativeImage.createFromPath(icon)
     tray = new Tray(trayIcon.resize({ width: 16, height: 16 }))
-    tray.setToolTip('Open WebUI')
+    tray.setToolTip('인트리클로 AI')
     updateTray()
 
 

@@ -422,7 +422,7 @@
 
     {#if showReveal}
       <div class="matrix-reveal">
-        <img src={logoImage} alt="Open WebUI" class="matrix-logo-img" />
+        <img src={logoImage} alt="인트리클로 AI" class="matrix-logo-img" />
       </div>
     {/if}
   </div>

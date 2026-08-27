@@ -23,7 +23,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="panel-header" onclick={toggle}>
       <img class="panel-logo" src={logoImage} alt="" />
-      <span>Open WebUI</span>
+      <span>인트리클로 AI</span>
     </div>
     <div class="panel-body">
       {#if url}
@@ -34,7 +34,7 @@
     </div>
   </div>
 {:else}
-  <button class="icon" onclick={toggle} aria-label="Open Open WebUI widget">
+  <button class="icon" onclick={toggle} aria-label="Open 인트리클로 AI widget">
     <img src={logoImage} alt="" />
   </button>
 {/if}

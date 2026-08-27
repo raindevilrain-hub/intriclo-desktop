@@ -858,10 +858,20 @@ export interface AppConfig {
   slackUrl: string
 }
 
+// Default remote server for a brand-new install (no config.json yet), so the
+// app lands on our NAS instance instead of the "set up a local server"
+// onboarding screen. Test-instance IP for now — swap these two constants
+// once a real domain is assigned; nothing else in the codebase hardcodes them.
+const DEFAULT_NAS_SERVER_URL = 'http://192.168.0.210:3099'
+const DEFAULT_MAIL_ASSISTANT_URL = 'http://192.168.0.210:5080'
+
 const DEFAULT_CONFIG: AppConfig = {
   version: 1,
-  defaultConnectionId: null,
-  connections: [],
+  defaultConnectionId: 'default-nas',
+  connections: [
+    { id: 'default-nas', name: '인트리클로 AI', type: 'remote', url: DEFAULT_NAS_SERVER_URL },
+    { id: 'default-mail-assistant', name: 'Mail Assistant', type: 'remote', url: DEFAULT_MAIL_ASSISTANT_URL }
+  ],
   runInBackground: true,
   globalShortcut: 'Alt+CommandOrControl+O',
   spotlightShortcut: 'Shift+CommandOrControl+I',
@@ -895,7 +905,9 @@ const DEFAULT_CONFIG: AppConfig = {
   windowMaximized: false,
   widgetMode: false,
   widgetPosition: null,
-  mailAssistantUrl: '',
+  mailAssistantUrl: DEFAULT_MAIL_ASSISTANT_URL,
+  // Real Slack workspace URL not confirmed yet — left blank on purpose so the
+  // user fills it in via Settings > Connections like before (no guessing).
   slackUrl: ''
 }
 

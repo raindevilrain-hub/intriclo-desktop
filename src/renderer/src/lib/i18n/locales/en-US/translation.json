@@ -1,6 +1,6 @@
 {
-  "app.name": "Open WebUI",
-  "app.desktop": "Open WebUI Desktop",
+  "app.name": "인트리클로 AI",
+  "app.desktop": "인트리클로 AI Desktop",
 
   "common.loading": "Loading…",
   "common.cancel": "Cancel",
@@ -297,6 +297,6 @@
   "settings.about.whatsNew": "What's New",
   "settings.about.noChangelog": "No changelog entries yet.",
   "settings.about.viewOnGithub": "View on GitHub →",
-  "settings.about.copyright": "Copyright (c) 2026 Open WebUI Inc. All rights reserved.",
+  "settings.about.copyright": "Copyright (c) 2026 인트리클로 AI. All rights reserved.",
   "settings.about.createdBy": "Created by Timothy J. Baek"
 }

@@ -1,5 +1,5 @@
 appId: com.intriclo.desktop
-productName: IntriClo
+productName: 인트리클로 AI
 directories:
   buildResources: build
 files:
@@ -19,10 +19,14 @@ asarUnpack:
 win:
   executableName: intriclo-desktop
 nsis:
+  oneClick: false
   artifactName: ${name}-${arch}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  allowToChangeInstallationDirectory: true
+  # build/installer.nsh (customInstall macro) is auto-included here since
+  # oneClick is false — adds the Quick Assist shortcut / best-effort feature enable.
 mac:
   target:
     - target: dmg
