@@ -79,6 +79,14 @@
   // Content preload path for webview bridge
   let contentPreloadPath: string = $state('')
 
+  // Electron's default webview UA includes "Electron/x.y.z" (and this app's
+  // name/version), which some sites — e.g. Slack's OIDC login — treat as an
+  // automation signal and respond to with an endless captcha/login loop.
+  // Override with a plain desktop Chrome UA matching this Electron build's
+  // actual Chromium version so the webview looks like a normal browser.
+  const WEBVIEW_USER_AGENT =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.7444.265 Safari/537.36'
+
   // Server is starting up (local)
   const serverStarting = $derived(
     localInstalled && (
@@ -272,6 +280,7 @@
       data-conn-id={connId}
       partition={getConnectionPartition(connId, remoteConnections.find((c) => c.id === connId)?.name)}
       preload={contentPreloadPath}
+      useragent={WEBVIEW_USER_AGENT}
       allowpopups
     ></webview>
   {/each}
