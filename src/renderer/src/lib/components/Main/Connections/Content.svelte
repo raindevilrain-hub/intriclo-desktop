@@ -7,6 +7,7 @@
   import GetStartedModal from './GetStartedModal.svelte'
   import AddConnectionModal from './AddConnectionModal.svelte'
   import landingVideo from '../../../../assets/landing.mp4'
+  import { getConnectionPartition } from '../../../connectionPartition'
 
   interface Props {
     sidebarOpen: boolean
@@ -100,7 +101,7 @@
 
   const retryActiveWebview = () => {
     const wv = document.querySelector(
-      `webview[partition="persist:connection-${activeConnectionId}"]`
+      `webview[data-conn-id="${activeConnectionId}"]`
     ) as any
     if (wv?.reload) {
       webviewErrors.delete(activeConnectionId)
@@ -128,7 +129,7 @@
       webviews.forEach((wv: any) => {
         if (wv._loadListenerAttached) return
         wv._loadListenerAttached = true
-        const connId = wv.getAttribute('partition')?.replace('persist:connection-', '') ?? ''
+        const connId = wv.getAttribute('data-conn-id') ?? ''
         if (!connId) return
 
         // Mark loading when navigation starts
@@ -268,7 +269,8 @@
       src={connUrl}
       class="flex-1 min-h-0 border-none"
       style="display: {view === 'connected' && activeConnectionId === connId ? 'flex' : 'none'}"
-      partition="persist:connection-{connId}"
+      data-conn-id={connId}
+      partition={getConnectionPartition(connId, remoteConnections.find((c) => c.id === connId)?.name)}
       preload={contentPreloadPath}
       allowpopups
     ></webview>

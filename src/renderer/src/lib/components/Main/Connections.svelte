@@ -341,7 +341,7 @@
     if (!container) return
 
     const webviews = connId
-      ? [container.querySelector(`webview[partition="persist:connection-${connId}"]`) as any].filter(Boolean)
+      ? [container.querySelector(`webview[data-conn-id="${connId}"]`) as any].filter(Boolean)
       : Array.from(container.querySelectorAll('webview'))
 
     for (const wv of webviews) {
