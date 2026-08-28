@@ -19,7 +19,48 @@
   let languages = $state<{ code: string; title: string }[]>([])
   let selectedLanguage = $state('en-US')
 
+  // 회사 계정 자동 로그인 (SSO) 상태
+  let ssoSaved = $state(false)
+  let ssoSavedEmail = $state('')
+  let ssoEmail = $state('')
+  let ssoPassword = $state('')
+  let ssoSaving = $state(false)
+  let ssoMessage = $state('')
+
+  const loadSsoStatus = async () => {
+    const status = await window.electronAPI.ssoStatus?.()
+    ssoSaved = status?.saved ?? false
+    ssoSavedEmail = status?.email ?? ''
+  }
+
+  const saveSso = async () => {
+    if (!ssoEmail.trim() || !ssoPassword) {
+      ssoMessage = '이메일과 비밀번호를 입력하세요.'
+      return
+    }
+    ssoSaving = true
+    ssoMessage = ''
+    try {
+      await window.electronAPI.ssoSave(ssoEmail.trim(), ssoPassword)
+      ssoPassword = ''
+      ssoEmail = ''
+      await loadSsoStatus()
+      ssoMessage = '저장했습니다. AI챗봇/Mail Assistant 를 열면 자동으로 로그인됩니다.'
+    } catch (e: any) {
+      ssoMessage = '저장 실패: ' + (e?.message ?? e)
+    } finally {
+      ssoSaving = false
+    }
+  }
+
+  const clearSso = async () => {
+    await window.electronAPI.ssoClear?.()
+    await loadSsoStatus()
+    ssoMessage = ''
+  }
+
   onMount(async () => {
+    loadSsoStatus()
     launchAtLogin = await window.electronAPI.getLaunchAtLogin()
     const cfg = await window.electronAPI.getConfig()
     runInBackground = cfg?.runInBackground ?? true
@@ -312,6 +353,50 @@
 </script>
 
 <div class="flex flex-col divide-y divide-white/[0.04]">
+  <div class="py-4">
+    <div class="text-[13px] opacity-70">회사 계정 자동 로그인</div>
+    <div class="text-[11px] opacity-25 mt-0.5">
+      AI챗봇/Mail Assistant 계정을 한 번 저장해두면 앱을 열 때마다 자동으로 로그인됩니다.
+    </div>
+    {#if ssoSaved}
+      <div class="mt-3 flex items-center justify-between text-[12px]">
+        <span class="opacity-60">저장됨: {ssoSavedEmail}</span>
+        <button
+          class="px-3 py-1.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] opacity-60 hover:opacity-90"
+          onclick={clearSso}
+        >
+          삭제
+        </button>
+      </div>
+    {:else}
+      <div class="mt-3 flex flex-col gap-2">
+        <input
+          type="email"
+          placeholder="이메일"
+          bind:value={ssoEmail}
+          class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
+        />
+        <input
+          type="password"
+          placeholder="비밀번호"
+          bind:value={ssoPassword}
+          onkeydown={(e) => e.key === 'Enter' && saveSso()}
+          class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
+        />
+        <button
+          class="self-end px-3 py-1.5 rounded-xl bg-black/[0.08] dark:bg-white/[0.12] text-[12px] disabled:opacity-40"
+          disabled={ssoSaving}
+          onclick={saveSso}
+        >
+          {ssoSaving ? '저장 중…' : '저장'}
+        </button>
+      </div>
+    {/if}
+    {#if ssoMessage}
+      <div class="mt-2 text-[11px] opacity-60">{ssoMessage}</div>
+    {/if}
+  </div>
+
   <div class="py-4 flex items-center justify-between">
     <div>
       <div class="text-[13px] opacity-70">{$i18n.t('settings.general.language')}</div>

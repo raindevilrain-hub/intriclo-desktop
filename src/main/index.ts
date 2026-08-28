@@ -15,10 +15,11 @@ import {
   Menu,
   ipcMain,
   Tray,
-  dialog
+  dialog,
+  safeStorage
 } from 'electron'
 import path, { join } from 'path'
-import { readFile, statfs } from 'fs/promises'
+import { readFile, writeFile, unlink, statfs } from 'fs/promises'
 
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 
@@ -1714,6 +1715,47 @@ if (!gotTheLock) {
 
     ipcMain.handle('validate:url', async (_event, url: string) => {
       return await validateRemoteUrl(url)
+    })
+
+    // ── 회사 계정 자동 로그인 (SSO) ──────────────────────────────
+    // AI챗봇(Open WebUI)과 Mail Assistant 는 같은 이메일+비밀번호 계정을
+    // 쓰도록 만들어졌다(오늘 계정 생성 작업). 여기 한 번 저장해두면
+    // Content.svelte 가 두 웹뷰의 로그인 페이지에 이 값을 대신 넣어준다.
+    // OS 키체인 기반 암호화(safeStorage)로 저장 — 평문으로 디스크에 안 남는다.
+    const ssoCredsPath = () => join(app.getPath('userData'), 'sso-creds.enc')
+
+    ipcMain.handle('sso:save', async (_event, email: string, password: string) => {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('이 시스템에서는 자격증명 암호화를 쓸 수 없습니다.')
+      }
+      const encrypted = safeStorage.encryptString(JSON.stringify({ email, password }))
+      await writeFile(ssoCredsPath(), encrypted)
+    })
+
+    ipcMain.handle('sso:clear', async () => {
+      await unlink(ssoCredsPath()).catch(() => {})
+    })
+
+    // 저장 여부 + 이메일만 반환 (렌더러가 항상 볼 수 있어도 되는 정보).
+    ipcMain.handle('sso:status', async () => {
+      try {
+        const raw = await readFile(ssoCredsPath())
+        const { email } = JSON.parse(safeStorage.decryptString(raw))
+        return { saved: true, email }
+      } catch {
+        return { saved: false, email: '' }
+      }
+    })
+
+    // 비밀번호까지 필요한 건 로그인 주입 시점뿐이라, 그때만 호출해서 쓰고
+    // 렌더러가 따로 들고 있지 않게 한다.
+    ipcMain.handle('sso:getCredentials', async () => {
+      try {
+        const raw = await readFile(ssoCredsPath())
+        return JSON.parse(safeStorage.decryptString(raw))
+      } catch {
+        return null
+      }
     })
 
     // Slack DM 은 웹뷰에 임베드하면 Slack의 봇 감지에 걸려 로그인 캡차 루프에

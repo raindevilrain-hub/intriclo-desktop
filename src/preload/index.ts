@@ -174,6 +174,10 @@ const api = {
   setDefaultConnection: (id: string) => ipcRenderer.invoke('connections:setDefault', id),
   connectTo: (id: string) => ipcRenderer.invoke('connections:connect', id),
   openExternal: (url: string) => ipcRenderer.invoke('connections:openExternal', url),
+  ssoSave: (email: string, password: string) => ipcRenderer.invoke('sso:save', email, password),
+  ssoClear: () => ipcRenderer.invoke('sso:clear'),
+  ssoStatus: () => ipcRenderer.invoke('sso:status'),
+  ssoGetCredentials: () => ipcRenderer.invoke('sso:getCredentials'),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 

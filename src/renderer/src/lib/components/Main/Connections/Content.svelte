@@ -57,6 +57,57 @@
 
   let showGetStartedModal = $state(false)
 
+  // ── 회사 계정 자동 로그인 (SSO) ──────────────────────────────────
+  // Settings 에서 이메일+비밀번호를 한 번 저장해두면, AI챗봇/Mail
+  // Assistant 웹뷰가 로그인 페이지로 뜰 때마다 대신 채워서 제출한다.
+  // 두 서버 모두 오늘 같은 이메일+비밀번호 계정으로 만들었기 때문에
+  // 하나의 자격증명으로 양쪽 다 커버된다.
+  async function attemptSsoLogin(wv: any, connId: string) {
+    if (connId !== 'default-nas' && connId !== 'default-mail-assistant') return
+    const creds = await window.electronAPI.ssoGetCredentials?.()
+    if (!creds?.email || !creds?.password) return
+
+    if (connId === 'default-nas') {
+      const script = `
+        (async () => {
+          if (localStorage.getItem('token')) return 'already'
+          try {
+            const r = await fetch('/api/v1/auths/signin', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: ${JSON.stringify(creds.email)}, password: ${JSON.stringify(creds.password)} })
+            })
+            if (!r.ok) return 'signin-failed:' + r.status
+            const data = await r.json()
+            if (!data.token) return 'no-token'
+            localStorage.setItem('token', data.token)
+            location.reload()
+            return 'ok'
+          } catch (e) { return 'error:' + e.message }
+        })()
+      `
+      wv.executeJavaScript(script).catch((e: any) => console.warn('SSO(AI챗봇) 실패:', e))
+    } else {
+      const script = `
+        (async () => {
+          if (!location.pathname.startsWith('/login')) return 'not-login-page'
+          try {
+            const r = await fetch('/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({ username: ${JSON.stringify(creds.email)}, password: ${JSON.stringify(creds.password)} })
+            })
+            const data = await r.json()
+            if (data.ok) { location.href = data.redirect || '/'; return 'ok' }
+            return 'login-failed:' + (data.error || '')
+          } catch (e) { return 'error:' + e.message }
+        })()
+      `
+      wv.executeJavaScript(script).catch((e: any) => console.warn('SSO(Mail Assistant) 실패:', e))
+    }
+  }
+
   const isInitializing = $derived($appState === 'initializing')
   const insufficientStorage = $derived(
     $appState?.startsWith('insufficient-storage:')
@@ -150,6 +201,13 @@
         wv.addEventListener('did-stop-loading', () => {
           webviewLoading.set(connId, false)
           webviewLoading = new Map(webviewLoading)
+        })
+
+        // 메인 프레임 로드가 끝날 때마다 저장된 자격증명으로 자동 로그인을
+        // 시도한다(이미 로그인돼 있으면 스크립트 안에서 조용히 스킵).
+        // did-finish-load 는 did-stop-loading과 달리 실패한 로드에는 안 걸린다.
+        wv.addEventListener('did-finish-load', () => {
+          attemptSsoLogin(wv, connId)
         })
 
         // Track load failures so we can show an error overlay
