@@ -186,11 +186,13 @@
 
   const connect = (id: string) => {
     showingLogs = false
-    // Slack DM 은 웹뷰 임베드가 안 통한다(Slack 자체 봇 감지 → 로그인 캡차 루프,
-    // 우리가 손댈 수 있는 부분이 아님). 시스템 기본 브라우저로 대신 연다.
+    // Slack DM 은 웹뷰 임베드가 안 통한다(Slack 자체 봇 감지 → 로그인 캡차
+    // 루프, 우리가 손댈 수 있는 부분이 아님). 브라우저 탭도 고려했지만
+    // 직원들이 이미 네이티브 슬랙 앱을 쓰고 있어서 그보다 못한 경험이라 —
+    // 대신 slack:// 딥링크로 이미 설치된 네이티브 앱을 그대로 띄운다.
     const target = ($connections ?? []).find((c) => c.id === id)
     if (target?.name === 'Slack') {
-      window.electronAPI.openExternal(target.url)
+      window.electronAPI.openExternal('slack://open')
       return
     }
     // Toggle: clicking the active connection unselects it
