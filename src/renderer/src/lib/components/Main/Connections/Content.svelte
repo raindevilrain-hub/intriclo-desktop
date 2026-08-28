@@ -31,6 +31,7 @@
     onSetView: (v: string) => void
     showAddConnectionModal: boolean
     pendingAdminTab?: boolean
+    onSsoLoggedIn?: () => void
   }
 
   let {
@@ -54,8 +55,46 @@
     onAddConnection,
     onSetView,
     showAddConnectionModal = $bindable(false),
-    pendingAdminTab = $bindable(false)
+    pendingAdminTab = $bindable(false),
+    onSsoLoggedIn
   }: Props = $props()
+
+  // 시작 화면에 회사 계정 로그인을 바로 보여준다 — 설정 안에 묻혀 있어서
+  // 못 찾는다는 피드백이 있어서, 아직 저장 안 됐으면 여기서 먼저 뜬다.
+  let ssoSaved = $state<boolean | null>(null)
+  let welcomeEmail = $state('')
+  let welcomePassword = $state('')
+  let welcomeSaving = $state(false)
+  let welcomeError = $state('')
+
+  onMount(async () => {
+    try {
+      const status = await window.electronAPI.ssoStatus?.()
+      ssoSaved = status?.saved ?? false
+    } catch {
+      ssoSaved = false
+    }
+  })
+
+  const submitWelcomeLogin = async () => {
+    if (!welcomeEmail.trim() || !welcomePassword) {
+      welcomeError = '이메일과 비밀번호를 입력하세요.'
+      return
+    }
+    welcomeSaving = true
+    welcomeError = ''
+    try {
+      await window.electronAPI.ssoSave(welcomeEmail.trim(), welcomePassword)
+      welcomeEmail = ''
+      welcomePassword = ''
+      ssoSaved = true
+      onSsoLoggedIn?.()
+    } catch (e: any) {
+      welcomeError = '저장 실패: ' + (e?.message ?? e)
+    } finally {
+      welcomeSaving = false
+    }
+  }
 
   // Mail Assistant 웹뷰에서 "관리자" 탭을 클릭하는 스크립트. 버튼이 없는
   // 일반 계정이면 querySelector가 null이라 조용히 무시된다.
@@ -511,9 +550,51 @@
         {#if remoteConnections.length > 0 || localInstalled}
           <div class="text-center max-w-[320px]" in:fade={{ duration: 200 }}>
             <div class="text-lg opacity-80 mb-1.5">{$i18n.t('app.name')}</div>
-            <div class="text-[12px] opacity-30 mb-6">
-              {$i18n.t('main.selectConnection')}
-            </div>
+
+            {#if ssoSaved === false}
+              <div class="text-left mt-3 mb-6 p-4 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08]">
+                <div class="text-[13px] font-medium">회사 계정으로 한 번에 로그인</div>
+                <div class="text-[11px] opacity-40 mt-0.5 mb-3">
+                  AI챗봇 + Mail Assistant 둘 다 자동으로 로그인됩니다.
+                </div>
+                <form
+                  class="flex flex-col gap-2"
+                  onsubmit={(e) => {
+                    e.preventDefault()
+                    submitWelcomeLogin()
+                  }}
+                >
+                  <input
+                    type="email"
+                    placeholder="이메일"
+                    autocomplete="username"
+                    bind:value={welcomeEmail}
+                    class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
+                  />
+                  <input
+                    type="password"
+                    placeholder="비밀번호"
+                    autocomplete="current-password"
+                    bind:value={welcomePassword}
+                    class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
+                  />
+                  {#if welcomeError}
+                    <div class="text-[11px] text-red-400">{welcomeError}</div>
+                  {/if}
+                  <button
+                    type="submit"
+                    disabled={welcomeSaving}
+                    class="px-3 py-1.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-[12px] disabled:opacity-40 border-none"
+                  >
+                    {welcomeSaving ? '로그인 중…' : '로그인'}
+                  </button>
+                </form>
+              </div>
+            {:else}
+              <div class="text-[12px] opacity-30 mb-6">
+                {$i18n.t('main.selectConnection')}
+              </div>
+            {/if}
           </div>
         {:else}
           <!-- Theme-responsive hero section -->

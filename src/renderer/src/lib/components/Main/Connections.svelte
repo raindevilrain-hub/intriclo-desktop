@@ -625,6 +625,22 @@
       onStartInstall={startInstall}
       onAddConnection={addConnection}
       onSetView={(v) => { view = v }}
+      onSsoLoggedIn={() => {
+        // 방금 저장한 자격증명으로 AI챗봇 + Mail Assistant 둘 다 바로 연다.
+        // 이미 열려 있던(로그인 안 된 채로 떠 있던) 웹뷰는 새로고침해야
+        // did-finish-load가 다시 걸려서 방금 저장한 자격증명으로 로그인을
+        // 시도한다 — connect()만 부르면 이미 열린 건 그냥 화면 전환만 하고
+        // 다시 로드하지 않는다.
+        for (const id of ['default-nas', 'default-mail-assistant']) {
+          if (openConnections.has(id)) {
+            const wv = document.querySelector(`webview[data-conn-id="${id}"]`) as any
+            wv?.reload?.()
+          }
+        }
+        // 화면엔 Mail Assistant를 보여준다 — AI챗봇은 뒤에서 같이 로그인된다.
+        connect('default-nas')
+        connect('default-mail-assistant')
+      }}
     />
   </div>
 
