@@ -24,32 +24,60 @@
     }
   }
 
-  // -webkit-app-region: drag 가 걸린 요소는 Windows에서 click 이벤트가
-  // 잘 안 먹는 경우가 있다(드래그로만 인식하고 클릭은 흡수해버림 — 그래서
-  // 위젯이 "떠다니기만" 하고 눌러도 아무 반응이 없었다). click 대신
-  // pointerdown/up 좌표 차이로 직접 드래그 여부를 판단한다.
+  // -webkit-app-region: drag 를 썼더니 Windows에서 마우스 이벤트 자체를
+  // 창 시스템이 가로채서(OS 타이틀바 드래그처럼 처리) 렌더러 JS로 안
+  // 넘어왔다 — 그래서 드래그(OS가 직접 처리)는 됐는데 클릭(JS 필요)은
+  // 전혀 반응이 없었다. app-region은 아예 안 쓰고, 좌표 계산 + 창 이동을
+  // 전부 여기서 직접 한다: pointerdown~up 사이 이동량이 작으면 클릭으로
+  // 보고 toggle(), 크면 드래그로 보고 그동안 계속 widget:setPosition 호출.
   const CLICK_MOVE_THRESHOLD = 4
-  let downX = 0
-  let downY = 0
+  let dragging = false
+  let moved = false
+  let dragStartScreenX = 0
+  let dragStartScreenY = 0
+  let winStartX = 0
+  let winStartY = 0
 
-  const handlePointerDown = (e: PointerEvent) => {
-    downX = e.clientX
-    downY = e.clientY
+  const handlePointerDown = async (e: PointerEvent) => {
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    dragStartScreenX = e.screenX
+    dragStartScreenY = e.screenY
+    moved = false
+    const pos = await api?.getPosition()
+    winStartX = pos?.x ?? 0
+    winStartY = pos?.y ?? 0
+    dragging = true
   }
 
-  const handlePointerUp = (e: PointerEvent) => {
-    const movedX = Math.abs(e.clientX - downX)
-    const movedY = Math.abs(e.clientY - downY)
-    if (movedX < CLICK_MOVE_THRESHOLD && movedY < CLICK_MOVE_THRESHOLD) {
+  const handlePointerMove = (e: PointerEvent) => {
+    if (!dragging) return
+    const dx = e.screenX - dragStartScreenX
+    const dy = e.screenY - dragStartScreenY
+    if (Math.abs(dx) >= CLICK_MOVE_THRESHOLD || Math.abs(dy) >= CLICK_MOVE_THRESHOLD) {
+      moved = true
+    }
+    if (moved) {
+      api?.setPosition(winStartX + dx, winStartY + dy)
+    }
+  }
+
+  const handlePointerUp = () => {
+    if (dragging && !moved) {
       toggle()
     }
+    dragging = false
   }
 </script>
 
 {#if expanded}
   <div class="panel">
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="panel-header" onpointerdown={handlePointerDown} onpointerup={handlePointerUp}>
+    <div
+      class="panel-header"
+      onpointerdown={handlePointerDown}
+      onpointermove={handlePointerMove}
+      onpointerup={handlePointerUp}
+    >
       <img class="panel-logo" src={logoImage} alt="" />
       <span>인트리클로 AI</span>
     </div>
@@ -65,6 +93,7 @@
   <button
     class="icon"
     onpointerdown={handlePointerDown}
+    onpointermove={handlePointerMove}
     onpointerup={handlePointerUp}
     aria-label="Open 인트리클로 AI widget"
   >
@@ -83,7 +112,6 @@
   }
 
   .icon {
-    -webkit-app-region: drag;
     width: 64px;
     height: 64px;
     border: none;
@@ -115,7 +143,6 @@
   }
 
   .panel-header {
-    -webkit-app-region: drag;
     flex-shrink: 0;
     height: 44px;
     display: flex;

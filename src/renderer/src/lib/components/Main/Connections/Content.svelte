@@ -95,6 +95,10 @@
         welcomeError = '로그인에 실패했습니다. 이메일/비밀번호를 확인해주세요.'
         return
       }
+      // 둘 중 하나만 됐을 때도 어느 쪽이 안 됐는지 바로 보여준다 — 예전엔
+      // 하나가 조용히 실패해도 아무 신호가 없어서 원인 파악이 어려웠다.
+      if (!result?.nasToken) welcomeError = 'AI챗봇 로그인은 실패했습니다(Mail Assistant는 성공).'
+      else if (!result?.mailOk) welcomeError = 'Mail Assistant 로그인은 실패했습니다(AI챗봇은 성공).'
       pendingNasToken = result?.nasToken ?? null
       onSsoLoggedIn?.()
     } catch (e: any) {

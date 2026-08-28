@@ -8,6 +8,10 @@ const api = {
     connectionName: string | null
   }> => {
     return ipcRenderer.invoke('widget:toggle')
+  },
+  getPosition: (): Promise<{ x: number; y: number }> => ipcRenderer.invoke('widget:getPosition'),
+  setPosition: (x: number, y: number): void => {
+    ipcRenderer.send('widget:setPosition', x, y)
   }
 }
 

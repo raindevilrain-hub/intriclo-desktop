@@ -2009,6 +2009,21 @@ if (!gotTheLock) {
       )
     })
 
+    // 위젯 아이콘/헤더에 CSS app-region:drag를 걸면 Windows에서 클릭
+    // 이벤트 자체를 안 보내주는 경우가 있어서(=드래그는 되는데 눌러도
+    // 반응이 없던 원인) app-region은 안 쓰고 렌더러가 직접 좌표를 계산해
+    // 이 두 IPC로 창을 옮긴다.
+    ipcMain.handle('widget:getPosition', () => {
+      if (!widgetWindow || widgetWindow.isDestroyed()) return { x: 0, y: 0 }
+      const [x, y] = widgetWindow.getPosition()
+      return { x, y }
+    })
+
+    ipcMain.on('widget:setPosition', (_event, x: number, y: number) => {
+      if (!widgetWindow || widgetWindow.isDestroyed()) return
+      widgetWindow.setPosition(Math.round(x), Math.round(y))
+    })
+
     // Floating widget: toggle between the docked icon and the expanded
     // panel. Resizes the window in place and (only when expanding) resolves
     // the current default connection URL for the renderer's <webview>.
