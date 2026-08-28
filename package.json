@@ -1,6 +1,6 @@
 {
   "name": "intriclo-desktop",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "license": "AGPL-3.0",
   "description": "인트리클로 AI 데스크톱",
   "main": "./out/main/index.js",
