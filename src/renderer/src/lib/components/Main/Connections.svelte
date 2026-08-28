@@ -14,6 +14,12 @@
   let showSlackPeople = $state(false)
   let showMeetingRecorder = $state(false)
 
+  // "관리자" 사이드바 메뉴 — Mail Assistant 웹뷰를 열고 로그인이 끝나면
+  // 자동으로 관리자 탭까지 클릭해준다. true인 동안 Content.svelte가 다음
+  // did-finish-load에서 관리자 탭 클릭 스크립트를 실행한다.
+  const ADMIN_CONN_ID = 'default-mail-assistant'
+  let pendingAdminTab = $state(false)
+
   interface Props {
     onOpenSettings: () => void
     sidebarOpen: boolean
@@ -252,6 +258,23 @@
       openConnections = new Map(openConnections)
       connectedUrl = conn.url
       view = 'connected'
+    }
+  }
+
+  const openAdmin = () => {
+    const isActive = activeConnectionId === ADMIN_CONN_ID && view === 'connected'
+    if (openConnections.has(ADMIN_CONN_ID)) {
+      // 이미 열려 있던 웹뷰 — did-finish-load가 다시 안 걸리므로(이미 로드된
+      // 상태) 관리자 탭 클릭을 여기서 바로 실행한다. 비관리자 계정이면
+      // 스크립트 안에서 조용히 무시된다.
+      const wv = document.querySelector(`webview[data-conn-id="${ADMIN_CONN_ID}"]`) as any
+      wv?.executeJavaScript?.(`document.querySelector('.tab-btn[data-tab="admin"]')?.click()`).catch(() => {})
+      if (!isActive) connect(ADMIN_CONN_ID)
+    } else {
+      // 처음 여는 경우 — 로그인(SSO)이 끝난 뒤 Content.svelte가 관리자 탭을
+      // 클릭하도록 플래그만 세팅하고 커넥션을 연다.
+      pendingAdminTab = true
+      connect(ADMIN_CONN_ID)
     }
   }
 
@@ -564,6 +587,7 @@
         onRemove={remove}
         {openGithub}
         onOpenMeetingRecorder={() => (showMeetingRecorder = true)}
+        onOpenAdmin={openAdmin}
       />
     {/if}
 
@@ -585,6 +609,7 @@
       bind:error
       bind:showAddConnectionModal
       bind:autoInstall
+      bind:pendingAdminTab
       onStartInstall={startInstall}
       onAddConnection={addConnection}
       onSetView={(v) => { view = v }}
