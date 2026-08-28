@@ -591,7 +591,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="h-full w-full flex flex-col bg-[#f5f5f7] dark:bg-[#0a0a0a] text-[#1d1d1f] dark:text-[#fafafa]" in:fade={{ duration: 200 }}>
   <div class="flex-1 min-h-0 flex">
-    {#if sidebarOpen}
+    {#if sidebarOpen && nasAuthenticated && mailAuthenticated}
       <Sidebar
         {activeConnectionId}
         {connectingId}
@@ -617,7 +617,7 @@
     {/if}
 
     <Content
-      {sidebarOpen}
+      sidebarOpen={sidebarOpen && nasAuthenticated && mailAuthenticated}
       bind:view
       {activeConnectionId}
       {connectingId}

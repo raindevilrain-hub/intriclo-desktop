@@ -87,18 +87,36 @@
     if (ssoSaved) {
       try {
         const result = await window.electronAPI.ssoLoginSaved?.()
-        if (result?.nasToken || result?.mailOk) {
-          pendingNasToken = result?.nasToken ?? null
-          nasAuthenticated = Boolean(result?.nasToken)
-          mailAuthenticated = Boolean(result?.mailOk)
-        } else {
-          welcomeError = '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
-        }
+        applyLoginResult(result, true)
       } catch {
         welcomeError = '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
       }
     }
   })
+
+  // 둘 중 하나라도 실패하면 전체를 실패로 취급한다 — AI챗봇만 되고
+  // Mail Assistant는 안 되는(또는 반대) 애매한 상태로 두지 않는다.
+  const applyLoginResult = (result: any, silent: boolean) => {
+    if (result?.nasToken && result?.mailOk) {
+      pendingNasToken = result.nasToken
+      nasAuthenticated = true
+      mailAuthenticated = true
+      welcomeError = ''
+      return true
+    }
+    nasAuthenticated = false
+    mailAuthenticated = false
+    if (!result?.nasToken && !result?.mailOk) {
+      welcomeError = silent
+        ? '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
+        : '로그인에 실패했습니다. 이메일/비밀번호를 확인해주세요.'
+    } else if (!result?.nasToken) {
+      welcomeError = 'AI챗봇 로그인이 실패해서 전체 로그인을 취소했습니다(Mail Assistant는 정상이었음).'
+    } else {
+      welcomeError = 'Mail Assistant 로그인이 실패해서 전체 로그인을 취소했습니다(AI챗봇은 정상이었음).'
+    }
+    return false
+  }
 
   const submitWelcomeLogin = async () => {
     if (!welcomeEmail.trim() || !welcomePassword) {
@@ -112,18 +130,9 @@
       welcomeEmail = ''
       welcomePassword = ''
       ssoSaved = true
-      if (!result?.nasToken && !result?.mailOk) {
-        welcomeError = '로그인에 실패했습니다. 이메일/비밀번호를 확인해주세요.'
-        return
+      if (applyLoginResult(result, false)) {
+        onSsoLoggedIn?.()
       }
-      // 둘 중 하나만 됐을 때도 어느 쪽이 안 됐는지 바로 보여준다 — 예전엔
-      // 하나가 조용히 실패해도 아무 신호가 없어서 원인 파악이 어려웠다.
-      if (!result?.nasToken) welcomeError = 'AI챗봇 로그인은 실패했습니다(Mail Assistant는 성공).'
-      else if (!result?.mailOk) welcomeError = 'Mail Assistant 로그인은 실패했습니다(AI챗봇은 성공).'
-      nasAuthenticated = Boolean(result?.nasToken)
-      mailAuthenticated = Boolean(result?.mailOk)
-      pendingNasToken = result?.nasToken ?? null
-      onSsoLoggedIn?.()
     } catch (e: any) {
       welcomeError = '로그인 실패: ' + (e?.message ?? e)
     } finally {

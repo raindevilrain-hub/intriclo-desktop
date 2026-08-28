@@ -1810,8 +1810,16 @@ if (!gotTheLock) {
       if (!creds?.email || !creds?.password) return null
 
       const cfg = await getConfig()
-      if (!cfg.mailAssistantUrl) return null
-      const base = cfg.mailAssistantUrl.replace(/\/$/, '')
+      // cfg.mailAssistantUrl는 예전에 config 생성 시점에만 한 번 박히는
+      // 별도 필드라 실제 커넥션 목록(cfg.connections)과 어긋날 수 있다
+      // (실측: 이 필드로 만든 요청이 서버에 아예 도달하지 못했다 — URL이
+      // 죽어 있었다는 뜻). 웹뷰가 실제로 쓰는 것과 같은 소스(connections
+      // 배열)에서 가져오는 걸로 통일한다.
+      const mailUrl =
+        cfg.connections.find((c: any) => c.id === 'default-mail-assistant')?.url ??
+        cfg.mailAssistantUrl
+      if (!mailUrl) return null
+      const base = mailUrl.replace(/\/$/, '')
 
       const loginRes = await fetch(`${base}/login`, {
         method: 'POST',
@@ -2080,7 +2088,14 @@ if (!gotTheLock) {
       let connectionName: string | null = null
       if (widgetExpanded) {
         try {
-          const conn = await getDefaultConnection()
+          // 위젯은 항상 AI챗봇을 기본으로 연다 — Mail Assistant는 메인
+          // 창용 넓은 화면으로 만들어진 대시보드라 위젯의 좁은 패널에서는
+          // 레이아웃이 깨진다. getDefaultConnection()(마지막으로 클릭한
+          // 연결)을 그대로 쓰면 메인 창에서 Mail Assistant를 열었다가
+          // 위젯을 펼쳤을 때도 깨진 화면이 뜨는 문제가 있었다.
+          const cfg = await getConfig()
+          const conn =
+            cfg.connections.find((c: any) => c.id === 'default-nas') ?? (await getDefaultConnection())
           if (conn) {
             url = resolveConnectionUrl(conn)
             connectionId = conn.id
