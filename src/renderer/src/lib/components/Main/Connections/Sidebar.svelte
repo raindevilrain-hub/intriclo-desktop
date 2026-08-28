@@ -19,6 +19,7 @@
     onRename: (id: string, name: string) => void
     onRemove: (id: string) => void
     openGithub: () => void
+    onOpenMeetingRecorder: () => void
   }
 
   let {
@@ -36,7 +37,8 @@
     onOpenSettings,
     onRename,
     onRemove,
-    openGithub
+    openGithub,
+    onOpenMeetingRecorder
   }: Props = $props()
 
   // Inline rename state
@@ -448,6 +450,29 @@
             />
           </svg>
           {$i18n.t('sidebar.settings')}
+        </button>
+
+        <button
+          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[12px] opacity-50 hover:opacity-90 hover:bg-black/4 dark:hover:bg-white/4 transition bg-transparent border-none text-[#1d1d1f] dark:text-[#fafafa] rounded-xl"
+          onclick={() => {
+            settingsOpen = false
+            onOpenMeetingRecorder()
+          }}
+        >
+          <svg
+            class="w-[14px] h-[14px] shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+            />
+          </svg>
+          회의 녹음
         </button>
 
         <button

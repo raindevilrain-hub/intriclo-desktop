@@ -1325,6 +1325,19 @@ if (!gotTheLock) {
     loadSpotlightPosition()
     log.info('Config:', CONFIG)
 
+    // ── 회의 녹음: 시스템 오디오 루프백 ──────────────────────────
+    // getDisplayMedia 로 시스템 오디오(상대방 목소리 등 스피커로 나가는 소리)를
+    // 잡으려면 Electron 39+ 는 화면 선택 UI 대신 이 핸들러가 직접 응답해야
+    // 한다. video 는 요청 안 하므로 audio: 'loopback' 만 돌려준다
+    // (Windows 전용 -- Electron 문서에 명시됨, 이 회사는 전부 Windows라 문제없음).
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      if (request.audioRequested) {
+        callback({ audio: 'loopback' })
+      } else {
+        callback({})
+      }
+    })
+
     // ── Bitwarden 확장 로드 (진짜 자동입력) ──────────────────────
     // AI챗봇/Mail Assistant/Slack 웹뷰가 공유하는 세션 파티션에 로드한다
     // (connectionPartition.ts 의 SHARED_PARTITION 과 반드시 같은 문자열이어야
@@ -1784,35 +1797,42 @@ if (!gotTheLock) {
       openUrl(url)
     })
 
-    // 사람별 슬랙 DM 바로가기용 사내 인원 목록. 저장된 SSO 자격증명으로
-    // Mail Assistant 에 직접 로그인해서(웹뷰 없이) /api/slack/members 를
-    // 부른다 — 별도 토큰을 앱에 심지 않고, 이미 있는 SSO 자격증명을 그대로 쓴다.
-    ipcMain.handle('slack:getMembers', async () => {
-      const creds = await (async () => {
-        try {
-          const raw = await readFile(ssoCredsPath())
-          return JSON.parse(safeStorage.decryptString(raw))
-        } catch {
-          return null
-        }
-      })()
-      if (!creds?.email || !creds?.password) return { needsSso: true, teamId: '', members: [] }
+    // 저장된 SSO 자격증명으로 Mail Assistant 에 직접 로그인해서(웹뷰 없이)
+    // 세션 쿠키를 얻는다. slack:getMembers 와 meeting:upload 가 공유해서 쓴다.
+    const loginToMailAssistant = async (): Promise<{ base: string; cookie: string } | null> => {
+      let creds: any
+      try {
+        const raw = await readFile(ssoCredsPath())
+        creds = JSON.parse(safeStorage.decryptString(raw))
+      } catch {
+        return null
+      }
+      if (!creds?.email || !creds?.password) return null
 
       const cfg = await getConfig()
-      if (!cfg.mailAssistantUrl) return { needsSso: false, teamId: '', members: [] }
+      if (!cfg.mailAssistantUrl) return null
       const base = cfg.mailAssistantUrl.replace(/\/$/, '')
-      try {
-        const loginRes = await fetch(`${base}/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: creds.email, password: creds.password })
-        })
-        const setCookie = loginRes.headers.get('set-cookie')
-        const loginData = await loginRes.json().catch(() => null)
-        if (!loginData?.ok || !setCookie) return { needsSso: false, teamId: '', members: [] }
 
-        const cookie = setCookie.split(';')[0]
-        const listRes = await fetch(`${base}/api/slack/members`, { headers: { Cookie: cookie } })
+      const loginRes = await fetch(`${base}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: creds.email, password: creds.password })
+      })
+      const setCookie = loginRes.headers.get('set-cookie')
+      const loginData = await loginRes.json().catch(() => null)
+      if (!loginData?.ok || !setCookie) return null
+      return { base, cookie: setCookie.split(';')[0] }
+    }
+
+    // 사람별 슬랙 DM 바로가기용 사내 인원 목록. 별도 토큰을 앱에 심지 않고,
+    // 이미 있는 SSO 자격증명을 그대로 써서 /api/slack/members 를 부른다.
+    ipcMain.handle('slack:getMembers', async () => {
+      try {
+        const session = await loginToMailAssistant()
+        if (!session) return { needsSso: true, teamId: '', members: [] }
+        const listRes = await fetch(`${session.base}/api/slack/members`, {
+          headers: { Cookie: session.cookie }
+        })
         const data = await listRes.json()
         return { needsSso: false, teamId: data.team_id || '', members: data.members || [] }
       } catch (err: any) {
@@ -1820,6 +1840,34 @@ if (!gotTheLock) {
         return { needsSso: false, teamId: '', members: [] }
       }
     })
+
+    // 회의 녹음본을 Mail Assistant 로 올려 전사+요약+저장+DM 을 맡긴다.
+    // audioBuffer 는 렌더러가 MediaRecorder 로 만든 webm Blob 을 ArrayBuffer 로
+    // 바꿔 넘긴 것.
+    ipcMain.handle(
+      'meeting:upload',
+      async (_event, title: string, audioBuffer: ArrayBuffer, mimeType: string) => {
+        const session = await loginToMailAssistant()
+        if (!session) return { ok: false, error: 'SSO 로그인 정보를 먼저 저장해주세요 (Settings).' }
+
+        const form = new FormData()
+        const ext = mimeType.includes('webm') ? 'webm' : 'ogg'
+        form.append('audio', new Blob([audioBuffer], { type: mimeType }), `meeting.${ext}`)
+        form.append('title', title || '')
+
+        try {
+          const res = await fetch(`${session.base}/api/meeting/transcribe`, {
+            method: 'POST',
+            headers: { Cookie: session.cookie },
+            body: form
+          })
+          return await res.json()
+        } catch (err: any) {
+          log.warn('meeting:upload 실패:', err)
+          return { ok: false, error: String(err?.message ?? err) }
+        }
+      }
+    )
 
     // Updater
     ipcMain.handle('updater:check', () => checkForUpdates())

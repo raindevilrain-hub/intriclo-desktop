@@ -9,8 +9,10 @@
   import StatusBar from './Connections/StatusBar.svelte'
   import LogPanel from './Connections/LogPanel.svelte'
   import SlackPeopleModal from './Connections/SlackPeopleModal.svelte'
+  import MeetingRecorder from './Connections/MeetingRecorder.svelte'
 
   let showSlackPeople = $state(false)
+  let showMeetingRecorder = $state(false)
 
   interface Props {
     onOpenSettings: () => void
@@ -561,6 +563,7 @@
         }}
         onRemove={remove}
         {openGithub}
+        onOpenMeetingRecorder={() => (showMeetingRecorder = true)}
       />
     {/if}
 
@@ -640,4 +643,8 @@
 
 {#if showSlackPeople}
   <SlackPeopleModal onCancel={() => (showSlackPeople = false)} />
+{/if}
+
+{#if showMeetingRecorder}
+  <MeetingRecorder onClose={() => (showMeetingRecorder = false)} />
 {/if}

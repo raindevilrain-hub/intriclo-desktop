@@ -179,6 +179,8 @@ const api = {
   ssoStatus: () => ipcRenderer.invoke('sso:status'),
   ssoGetCredentials: () => ipcRenderer.invoke('sso:getCredentials'),
   slackGetMembers: () => ipcRenderer.invoke('slack:getMembers'),
+  meetingUpload: (title: string, audioBuffer: ArrayBuffer, mimeType: string) =>
+    ipcRenderer.invoke('meeting:upload', title, audioBuffer, mimeType),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 
