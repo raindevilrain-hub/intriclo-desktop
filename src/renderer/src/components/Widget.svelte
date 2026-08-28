@@ -23,12 +23,33 @@
       }
     }
   }
+
+  // -webkit-app-region: drag 가 걸린 요소는 Windows에서 click 이벤트가
+  // 잘 안 먹는 경우가 있다(드래그로만 인식하고 클릭은 흡수해버림 — 그래서
+  // 위젯이 "떠다니기만" 하고 눌러도 아무 반응이 없었다). click 대신
+  // pointerdown/up 좌표 차이로 직접 드래그 여부를 판단한다.
+  const CLICK_MOVE_THRESHOLD = 4
+  let downX = 0
+  let downY = 0
+
+  const handlePointerDown = (e: PointerEvent) => {
+    downX = e.clientX
+    downY = e.clientY
+  }
+
+  const handlePointerUp = (e: PointerEvent) => {
+    const movedX = Math.abs(e.clientX - downX)
+    const movedY = Math.abs(e.clientY - downY)
+    if (movedX < CLICK_MOVE_THRESHOLD && movedY < CLICK_MOVE_THRESHOLD) {
+      toggle()
+    }
+  }
 </script>
 
 {#if expanded}
   <div class="panel">
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <div class="panel-header" onclick={toggle}>
+    <div class="panel-header" onpointerdown={handlePointerDown} onpointerup={handlePointerUp}>
       <img class="panel-logo" src={logoImage} alt="" />
       <span>인트리클로 AI</span>
     </div>
@@ -41,7 +62,12 @@
     </div>
   </div>
 {:else}
-  <button class="icon" onclick={toggle} aria-label="Open 인트리클로 AI widget">
+  <button
+    class="icon"
+    onpointerdown={handlePointerDown}
+    onpointerup={handlePointerUp}
+    aria-label="Open 인트리클로 AI widget"
+  >
     <img src={logoImage} alt="" />
   </button>
 {/if}
