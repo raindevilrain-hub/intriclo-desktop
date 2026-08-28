@@ -1841,6 +1841,66 @@ if (!gotTheLock) {
       }
     })
 
+    // 시작화면 "회사 계정으로 한 번에 로그인" 전용. 예전 방식(웹뷰가 뜬 뒤
+    // 로그인 페이지를 찾아서 JS로 대신 채워 넣기)은 웹뷰 로딩 타이밍과
+    // 페이지 구조에 따라 조용히 실패하기 쉬웠다 — 대신 여기서 서버에 직접
+    // 로그인해서 얻은 세션 쿠키/토큰을 웹뷰가 뜨기도 전에 미리 심어둔다.
+    // Mail Assistant는 쿠키 기반이라 세션에 쿠키를 넣어두면 그걸로 끝(웹뷰가
+    // 로그인 페이지 자체를 볼 일이 없음). AI챗봇(Open WebUI)은 localStorage
+    // 토큰 기반이라 쿠키 주입이 안 통해서, 발급받은 토큰을 렌더러로 돌려주면
+    // 렌더러가 웹뷰 dom-ready 시점(화면 그려지기 전)에 넣어준다.
+    ipcMain.handle('sso:loginBoth', async (_event, email: string, password: string) => {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('이 시스템에서는 자격증명 암호화를 쓸 수 없습니다.')
+      }
+      await writeFile(ssoCredsPath(), safeStorage.encryptString(JSON.stringify({ email, password })))
+
+      const cfg = await getConfig()
+      let nasToken: string | null = null
+      const nasConn = cfg.connections.find((c: any) => c.id === 'default-nas')
+      if (nasConn?.url) {
+        try {
+          const r = await fetch(`${nasConn.url.replace(/\/$/, '')}/api/v1/auths/signin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          })
+          if (r.ok) {
+            const data = await r.json()
+            nasToken = data?.token ?? null
+          } else {
+            log.warn('sso:loginBoth — AI챗봇 로그인 실패:', r.status, await r.text().catch(() => ''))
+          }
+        } catch (err) {
+          log.warn('sso:loginBoth — AI챗봇 로그인 오류:', err)
+        }
+      }
+
+      let mailOk = false
+      const mailSession = await loginToMailAssistant()
+      if (mailSession) {
+        const pair = mailSession.cookie
+        const eq = pair.indexOf('=')
+        if (eq > 0) {
+          try {
+            await session.fromPartition('persist:intriclo-shared').cookies.set({
+              url: mailSession.base,
+              name: pair.slice(0, eq),
+              value: pair.slice(eq + 1),
+              path: '/'
+            })
+            mailOk = true
+          } catch (err) {
+            log.warn('sso:loginBoth — Mail Assistant 쿠키 주입 실패:', err)
+          }
+        }
+      } else {
+        log.warn('sso:loginBoth — Mail Assistant 로그인 실패')
+      }
+
+      return { nasToken, mailOk }
+    })
+
     // 사이드바 "관리자" 줄을 관리자 계정에게만 보여주기 위한 확인.
     // Mail Assistant의 /api/me 가 로그인한 계정의 is_admin 을 갖고 있다.
     ipcMain.handle('admin:isAdmin', async () => {

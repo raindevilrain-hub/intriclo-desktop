@@ -182,6 +182,8 @@ const api = {
   meetingUpload: (title: string, audioBuffer: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke('meeting:upload', title, audioBuffer, mimeType),
   checkIsAdmin: () => ipcRenderer.invoke('admin:isAdmin'),
+  ssoLoginBoth: (email: string, password: string) =>
+    ipcRenderer.invoke('sso:loginBoth', email, password),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 

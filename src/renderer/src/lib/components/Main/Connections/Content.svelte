@@ -67,6 +67,9 @@
   let welcomeSaving = $state(false)
   let welcomeError = $state('')
 
+  // dom-ready 리스너(위)가 소비하는 일회성 값 — UI에 안 쓰이므로 $state 아님.
+  let pendingNasToken: string | null = null
+
   onMount(async () => {
     try {
       const status = await window.electronAPI.ssoStatus?.()
@@ -84,13 +87,18 @@
     welcomeSaving = true
     welcomeError = ''
     try {
-      await window.electronAPI.ssoSave(welcomeEmail.trim(), welcomePassword)
+      const result = await window.electronAPI.ssoLoginBoth(welcomeEmail.trim(), welcomePassword)
       welcomeEmail = ''
       welcomePassword = ''
       ssoSaved = true
+      if (!result?.nasToken && !result?.mailOk) {
+        welcomeError = '로그인에 실패했습니다. 이메일/비밀번호를 확인해주세요.'
+        return
+      }
+      pendingNasToken = result?.nasToken ?? null
       onSsoLoggedIn?.()
     } catch (e: any) {
-      welcomeError = '저장 실패: ' + (e?.message ?? e)
+      welcomeError = '로그인 실패: ' + (e?.message ?? e)
     } finally {
       welcomeSaving = false
     }
@@ -281,6 +289,20 @@
           webviewLoading.set(connId, false)
           webviewLoading = new Map(webviewLoading)
         })
+
+        // 시작화면 "한 번에 로그인"으로 미리 받아둔 AI챗봇 토큰을, 화면이
+        // 그려지기 전(dom-ready — did-finish-load보다 이름) 시점에 넣어둔다.
+        // 로그인 페이지가 아예 뜨는 일 없이 바로 로그인된 화면으로 열린다.
+        if (connId === 'default-nas') {
+          wv.addEventListener('dom-ready', () => {
+            if (!pendingNasToken) return
+            const token = pendingNasToken
+            pendingNasToken = null
+            wv.executeJavaScript(
+              `localStorage.setItem('token', ${JSON.stringify(token)})`
+            ).catch(() => {})
+          })
+        }
 
         // 메인 프레임 로드가 끝날 때마다 저장된 자격증명으로 자동 로그인을
         // 시도한다(이미 로그인돼 있으면 스크립트 안에서 조용히 스킵).
