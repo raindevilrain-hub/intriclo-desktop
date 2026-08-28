@@ -495,14 +495,6 @@
       sendToWebview(data)
     })
 
-    // Auto-connect to the default connection on startup so the webview
-    // is pre-loaded and ready for spotlight queries.
-    window.electronAPI.getConfig().then((cfg: any) => {
-      if (cfg?.defaultConnectionId && !activeConnectionId) {
-        connect(cfg.defaultConnectionId)
-      }
-    })
-
     // Check current Open Terminal state on mount
     window.electronAPI.getOpenTerminalInfo().then((info: any) => {
       if (info?.status) {

@@ -2604,15 +2604,14 @@ if (!gotTheLock) {
       log.info('Migrated legacy local connection entry from connections array')
     }
 
-    // Check if already configured, auto-connect to default
-    const defaultConn = await getDefaultConnection()
-    if (defaultConn) {
-      createMainWindow()
-      const result = await connectTo(defaultConn)
-      if (result) sendToRenderer('connection:open', result)
-    } else {
-      createMainWindow()
-    }
+    // 예전엔 여기서 마지막으로 쓰던 연결을 자동으로 다시 열었는데, 그러면
+    // 시작화면(맨 처음 로그인 화면)을 매번 건너뛰고 곧장 그 연결의 (로그인
+    // 안 된) 페이지로 가버렸다 — "왜 자꾸 각자 로그인 화면이 뜨냐"는 반복
+    // 신고의 실제 원인. 이제 시작할 땐 항상 시작화면부터 보여준다(이미
+    // SSO 자격증명이 저장돼 있으면 시작화면이 알아서 로그인 폼 대신
+    // "연결을 선택하세요"만 보여주고, 실제 연결은 사이드바 클릭 한 번으로
+    // 열림 — 그때도 이미 로그인된 세션이라 로그인 화면이 안 뜬다).
+    createMainWindow()
 
     // Initialize auto-updater
     if (mainWindow) {
