@@ -1841,6 +1841,21 @@ if (!gotTheLock) {
       }
     })
 
+    // 사이드바 "관리자" 줄을 관리자 계정에게만 보여주기 위한 확인.
+    // Mail Assistant의 /api/me 가 로그인한 계정의 is_admin 을 갖고 있다.
+    ipcMain.handle('admin:isAdmin', async () => {
+      try {
+        const session = await loginToMailAssistant()
+        if (!session) return false
+        const res = await fetch(`${session.base}/api/me`, { headers: { Cookie: session.cookie } })
+        const data = await res.json().catch(() => null)
+        return Boolean(data?.is_admin)
+      } catch (err: any) {
+        log.warn('admin:isAdmin 실패:', err)
+        return false
+      }
+    })
+
     // 회의 녹음본을 Mail Assistant 로 올려 전사+요약+저장+DM 을 맡긴다.
     // audioBuffer 는 렌더러가 MediaRecorder 로 만든 webm Blob 을 ArrayBuffer 로
     // 바꿔 넘긴 것.

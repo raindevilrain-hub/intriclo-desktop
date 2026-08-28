@@ -181,6 +181,7 @@ const api = {
   slackGetMembers: () => ipcRenderer.invoke('slack:getMembers'),
   meetingUpload: (title: string, audioBuffer: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke('meeting:upload', title, audioBuffer, mimeType),
+  checkIsAdmin: () => ipcRenderer.invoke('admin:isAdmin'),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 

@@ -20,6 +20,17 @@
   const ADMIN_CONN_ID = 'default-mail-assistant'
   let pendingAdminTab = $state(false)
 
+  // 사이드바 "관리자" 줄은 실제 관리자 계정에게만 보여준다(다른 직원 눈엔
+  // 아예 안 보임). SSO 로그인 정보로 /api/me 를 조회해서 판단.
+  let isAdmin = $state(false)
+  onMount(async () => {
+    try {
+      isAdmin = Boolean(await window.electronAPI.checkIsAdmin?.())
+    } catch {
+      isAdmin = false
+    }
+  })
+
   interface Props {
     onOpenSettings: () => void
     sidebarOpen: boolean
@@ -588,6 +599,7 @@
         {openGithub}
         onOpenMeetingRecorder={() => (showMeetingRecorder = true)}
         onOpenAdmin={openAdmin}
+        {isAdmin}
       />
     {/if}
 
