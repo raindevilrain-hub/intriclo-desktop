@@ -1,11 +1,13 @@
 <script lang="ts">
   import logoImage from '../lib/assets/images/splash.png'
+  import { getConnectionPartition } from '../lib/connectionPartition'
 
   // Collapsed (icon) vs expanded (panel) — always starts collapsed; the
   // main process never persists the expanded state, only the docked
   // (icon) position (see widget:toggle in src/main/index.ts).
   let expanded = $state(false)
   let url = $state<string | null>(null)
+  let partition = $state('persist:widget')
 
   const api = window.widgetAPI
 
@@ -14,6 +16,11 @@
     if (result) {
       expanded = result.expanded
       url = result.url
+      // 메인 창의 같은 연결과 동일한 파티션을 써야 거기서 로그인한 세션을
+      // 그대로 이어받는다 — 안 그러면 열 때마다 로그인 안 된 빈 세션이 뜬다.
+      if (result.connectionId) {
+        partition = getConnectionPartition(result.connectionId, result.connectionName)
+      }
     }
   }
 </script>
@@ -27,7 +34,7 @@
     </div>
     <div class="panel-body">
       {#if url}
-        <webview src={url} class="webview" partition="persist:widget"></webview>
+        <webview src={url} class="webview" {partition}></webview>
       {:else}
         <div class="empty">No connection configured yet. Open the main window to set one up.</div>
       {/if}

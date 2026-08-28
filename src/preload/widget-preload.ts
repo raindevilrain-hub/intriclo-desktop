@@ -1,7 +1,12 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
 const api = {
-  toggle: (): Promise<{ expanded: boolean; url: string | null }> => {
+  toggle: (): Promise<{
+    expanded: boolean
+    url: string | null
+    connectionId: string | null
+    connectionName: string | null
+  }> => {
     return ipcRenderer.invoke('widget:toggle')
   }
 }

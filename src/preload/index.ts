@@ -173,6 +173,7 @@ const api = {
   updateConnection: (id: string, updates: any) => ipcRenderer.invoke('connections:update', id, updates),
   setDefaultConnection: (id: string) => ipcRenderer.invoke('connections:setDefault', id),
   connectTo: (id: string) => ipcRenderer.invoke('connections:connect', id),
+  openExternal: (url: string) => ipcRenderer.invoke('connections:openExternal', url),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 

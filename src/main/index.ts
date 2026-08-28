@@ -1716,6 +1716,13 @@ if (!gotTheLock) {
       return await validateRemoteUrl(url)
     })
 
+    // Slack DM 은 웹뷰에 임베드하면 Slack의 봇 감지에 걸려 로그인 캡차 루프에
+    // 빠진다(#해결불가 — Electron 웹뷰 자체를 봇으로 판정). 진짜 브라우저에서만
+    // 뚫리므로, 시스템 기본 브라우저로 대신 연다.
+    ipcMain.handle('connections:openExternal', (_event, url: string) => {
+      openUrl(url)
+    })
+
     // Updater
     ipcMain.handle('updater:check', () => checkForUpdates())
     ipcMain.handle('updater:download', () => downloadUpdate())
@@ -1808,16 +1815,22 @@ if (!gotTheLock) {
       )
 
       let url: string | null = null
+      let connectionId: string | null = null
+      let connectionName: string | null = null
       if (widgetExpanded) {
         try {
           const conn = await getDefaultConnection()
-          url = conn ? resolveConnectionUrl(conn) : null
+          if (conn) {
+            url = resolveConnectionUrl(conn)
+            connectionId = conn.id
+            connectionName = conn.name
+          }
         } catch (err: any) {
           log.warn('widget:toggle — failed to resolve default connection:', err)
         }
       }
 
-      return { expanded: widgetExpanded, url }
+      return { expanded: widgetExpanded, url, connectionId, connectionName }
     })
 
     // Capture a region of the screen (called from Spotlight renderer after drag)

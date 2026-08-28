@@ -186,6 +186,13 @@
 
   const connect = (id: string) => {
     showingLogs = false
+    // Slack DM 은 웹뷰 임베드가 안 통한다(Slack 자체 봇 감지 → 로그인 캡차 루프,
+    // 우리가 손댈 수 있는 부분이 아님). 시스템 기본 브라우저로 대신 연다.
+    const target = ($connections ?? []).find((c) => c.id === id)
+    if (target?.name === 'Slack') {
+      window.electronAPI.openExternal(target.url)
+      return
+    }
     // Toggle: clicking the active connection unselects it
     if (activeConnectionId === id && view === 'connected') {
       connectingId = ''
