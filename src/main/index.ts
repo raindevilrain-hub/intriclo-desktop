@@ -1849,12 +1849,14 @@ if (!gotTheLock) {
     // 로그인 페이지 자체를 볼 일이 없음). AI챗봇(Open WebUI)은 localStorage
     // 토큰 기반이라 쿠키 주입이 안 통해서, 발급받은 토큰을 렌더러로 돌려주면
     // 렌더러가 웹뷰 dom-ready 시점(화면 그려지기 전)에 넣어준다.
-    ipcMain.handle('sso:loginBoth', async (_event, email: string, password: string) => {
-      if (!safeStorage.isEncryptionAvailable()) {
-        throw new Error('이 시스템에서는 자격증명 암호화를 쓸 수 없습니다.')
-      }
-      await writeFile(ssoCredsPath(), safeStorage.encryptString(JSON.stringify({ email, password })))
-
+    // 저장된 자격증명(디스크의 sso-creds.enc)으로 두 서버에 로그인해서 세션을
+    // 미리 심어둔다. sso:loginBoth(새로 입력한 자격증명 저장 후)와
+    // sso:loginSaved(이미 저장된 걸로 조용히 재시도, 앱 시작 시 사용) 둘 다
+    // 이걸 공유한다.
+    const performLoginBoth = async (
+      email: string,
+      password: string
+    ): Promise<{ nasToken: string | null; mailOk: boolean }> => {
       const cfg = await getConfig()
       let nasToken: string | null = null
       const nasConn = cfg.connections.find((c: any) => c.id === 'default-nas')
@@ -1869,10 +1871,10 @@ if (!gotTheLock) {
             const data = await r.json()
             nasToken = data?.token ?? null
           } else {
-            log.warn('sso:loginBoth — AI챗봇 로그인 실패:', r.status, await r.text().catch(() => ''))
+            log.warn('performLoginBoth — AI챗봇 로그인 실패:', r.status, await r.text().catch(() => ''))
           }
         } catch (err) {
-          log.warn('sso:loginBoth — AI챗봇 로그인 오류:', err)
+          log.warn('performLoginBoth — AI챗봇 로그인 오류:', err)
         }
       }
 
@@ -1891,14 +1893,37 @@ if (!gotTheLock) {
             })
             mailOk = true
           } catch (err) {
-            log.warn('sso:loginBoth — Mail Assistant 쿠키 주입 실패:', err)
+            log.warn('performLoginBoth — Mail Assistant 쿠키 주입 실패:', err)
           }
         }
       } else {
-        log.warn('sso:loginBoth — Mail Assistant 로그인 실패')
+        log.warn('performLoginBoth — Mail Assistant 로그인 실패')
       }
 
       return { nasToken, mailOk }
+    }
+
+    ipcMain.handle('sso:loginBoth', async (_event, email: string, password: string) => {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('이 시스템에서는 자격증명 암호화를 쓸 수 없습니다.')
+      }
+      await writeFile(ssoCredsPath(), safeStorage.encryptString(JSON.stringify({ email, password })))
+      return performLoginBoth(email, password)
+    })
+
+    // 앱 시작 시 시작화면에서 조용히 한 번 시도해보는 용도 — 이미 저장된
+    // 자격증명이 있고 그걸로 로그인이 되면, 사용자가 다시 입력할 필요 없이
+    // 바로 연결들을 쓸 수 있다. 저장된 게 없거나 실패하면 null.
+    ipcMain.handle('sso:loginSaved', async () => {
+      let creds: any
+      try {
+        const raw = await readFile(ssoCredsPath())
+        creds = JSON.parse(safeStorage.decryptString(raw))
+      } catch {
+        return null
+      }
+      if (!creds?.email || !creds?.password) return null
+      return performLoginBoth(creds.email, creds.password)
     })
 
     // 사이드바 "관리자" 줄을 관리자 계정에게만 보여주기 위한 확인.

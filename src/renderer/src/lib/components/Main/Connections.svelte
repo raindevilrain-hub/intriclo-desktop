@@ -20,6 +20,14 @@
   const ADMIN_CONN_ID = 'default-mail-assistant'
   let pendingAdminTab = $state(false)
 
+  // AI챗봇/Mail Assistant는 이 세션에서 실제로 로그인이 성공한 뒤에만 열 수
+  // 있게 막는다 — 안 그러면 각자 로그인 안 된 원래 페이지(각각의 로그인
+  // 화면)가 그대로 보여서, "메인 로그인 하나로만" 하려는 목적이 깨진다.
+  // Content.svelte가 시작화면에서 로그인(자동 재시도 포함)에 성공하면
+  // true로 바뀐다.
+  let nasAuthenticated = $state(false)
+  let mailAuthenticated = $state(false)
+
   // 사이드바 "관리자" 줄은 실제 관리자 계정에게만 보여준다(다른 직원 눈엔
   // 아예 안 보임). SSO 로그인 정보로 /api/me 를 조회해서 판단.
   let isAdmin = $state(false)
@@ -215,6 +223,19 @@
     const target = ($connections ?? []).find((c) => c.id === id)
     if (target?.name === 'Slack') {
       showSlackPeople = true
+      return
+    }
+    // 아직 이번 세션에 로그인이 안 됐으면(=각 서버의 세션이 없으면) 절대
+    // 안 연다 — 열면 그 서버 자체 로그인 화면이 그대로 보여버린다("각각
+    // 로그인 화면"). 대신 메인 로그인 화면(시작화면)으로 보낸다.
+    if (
+      (id === 'default-nas' && !nasAuthenticated) ||
+      (id === 'default-mail-assistant' && !mailAuthenticated)
+    ) {
+      connectingId = ''
+      activeConnectionId = ''
+      connectedUrl = ''
+      view = 'welcome'
       return
     }
     // Toggle: clicking the active connection unselects it
@@ -614,6 +635,8 @@
       bind:showAddConnectionModal
       bind:autoInstall
       bind:pendingAdminTab
+      bind:nasAuthenticated
+      bind:mailAuthenticated
       onStartInstall={startInstall}
       onAddConnection={addConnection}
       onSetView={(v) => { view = v }}

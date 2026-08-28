@@ -31,6 +31,8 @@
     onSetView: (v: string) => void
     showAddConnectionModal: boolean
     pendingAdminTab?: boolean
+    nasAuthenticated?: boolean
+    mailAuthenticated?: boolean
     onSsoLoggedIn?: () => void
   }
 
@@ -56,6 +58,8 @@
     onSetView,
     showAddConnectionModal = $bindable(false),
     pendingAdminTab = $bindable(false),
+    nasAuthenticated = $bindable(false),
+    mailAuthenticated = $bindable(false),
     onSsoLoggedIn
   }: Props = $props()
 
@@ -76,6 +80,23 @@
       ssoSaved = status?.saved ?? false
     } catch {
       ssoSaved = false
+    }
+    // 저장된 자격증명이 있으면 조용히(폼 없이) 한 번 로그인을 시도해서
+    // 두 서버 세션을 미리 만들어둔다 — 성공하면 사이드바 연결 클릭이 바로
+    // 통한다. 실패하면(비번이 틀렸거나 등) 폼을 보여줘서 다시 입력받는다.
+    if (ssoSaved) {
+      try {
+        const result = await window.electronAPI.ssoLoginSaved?.()
+        if (result?.nasToken || result?.mailOk) {
+          pendingNasToken = result?.nasToken ?? null
+          nasAuthenticated = Boolean(result?.nasToken)
+          mailAuthenticated = Boolean(result?.mailOk)
+        } else {
+          welcomeError = '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
+        }
+      } catch {
+        welcomeError = '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
+      }
     }
   })
 
@@ -99,6 +120,8 @@
       // 하나가 조용히 실패해도 아무 신호가 없어서 원인 파악이 어려웠다.
       if (!result?.nasToken) welcomeError = 'AI챗봇 로그인은 실패했습니다(Mail Assistant는 성공).'
       else if (!result?.mailOk) welcomeError = 'Mail Assistant 로그인은 실패했습니다(AI챗봇은 성공).'
+      nasAuthenticated = Boolean(result?.nasToken)
+      mailAuthenticated = Boolean(result?.mailOk)
       pendingNasToken = result?.nasToken ?? null
       onSsoLoggedIn?.()
     } catch (e: any) {
@@ -577,12 +600,17 @@
           <div class="text-center max-w-[320px]" in:fade={{ duration: 200 }}>
             <div class="text-lg opacity-80 mb-1.5">{$i18n.t('app.name')}</div>
 
-            {#if ssoSaved === false}
+            {#if ssoSaved !== null}
               <div class="text-left mt-3 mb-6 p-4 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08]">
                 <div class="text-[13px] font-medium">회사 계정으로 한 번에 로그인</div>
                 <div class="text-[11px] opacity-40 mt-0.5 mb-3">
                   AI챗봇 + Mail Assistant 둘 다 자동으로 로그인됩니다.
                 </div>
+                {#if ssoSaved}
+                  <div class="text-[11px] opacity-40 mb-2">
+                    저장된 계정이 있지만, 로그인이 안 되면 아래에 다시 입력하고 눌러주세요(기존 정보를 덮어씁니다).
+                  </div>
+                {/if}
                 <form
                   class="flex flex-col gap-2"
                   onsubmit={(e) => {

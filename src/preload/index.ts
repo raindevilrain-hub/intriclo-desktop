@@ -184,6 +184,7 @@ const api = {
   checkIsAdmin: () => ipcRenderer.invoke('admin:isAdmin'),
   ssoLoginBoth: (email: string, password: string) =>
     ipcRenderer.invoke('sso:loginBoth', email, password),
+  ssoLoginSaved: () => ipcRenderer.invoke('sso:loginSaved'),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 
