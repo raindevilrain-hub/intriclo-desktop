@@ -8,6 +8,9 @@
   import Content from './Connections/Content.svelte'
   import StatusBar from './Connections/StatusBar.svelte'
   import LogPanel from './Connections/LogPanel.svelte'
+  import SlackPeopleModal from './Connections/SlackPeopleModal.svelte'
+
+  let showSlackPeople = $state(false)
 
   interface Props {
     onOpenSettings: () => void
@@ -187,12 +190,12 @@
   const connect = (id: string) => {
     showingLogs = false
     // Slack DM 은 웹뷰 임베드가 안 통한다(Slack 자체 봇 감지 → 로그인 캡차
-    // 루프, 우리가 손댈 수 있는 부분이 아님). 브라우저 탭도 고려했지만
-    // 직원들이 이미 네이티브 슬랙 앱을 쓰고 있어서 그보다 못한 경험이라 —
-    // 대신 slack:// 딥링크로 이미 설치된 네이티브 앱을 그대로 띄운다.
+    // 루프, 우리가 손댈 수 있는 부분이 아님). 직원들이 이미 네이티브 슬랙
+    // 앱을 쓰고 있어서 브라우저보다 slack:// 딥링크가 낫다 — 사람을 골라서
+    // 그 사람과의 DM을 바로 여는 선택 창을 띄운다.
     const target = ($connections ?? []).find((c) => c.id === id)
     if (target?.name === 'Slack') {
-      window.electronAPI.openExternal('slack://open')
+      showSlackPeople = true
       return
     }
     // Toggle: clicking the active connection unselects it
@@ -634,3 +637,7 @@
     onToggleLlamaCpp={toggleLlamaCpp}
   />
 </div>
+
+{#if showSlackPeople}
+  <SlackPeopleModal onCancel={() => (showSlackPeople = false)} />
+{/if}

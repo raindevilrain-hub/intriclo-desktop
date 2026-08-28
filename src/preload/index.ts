@@ -178,6 +178,7 @@ const api = {
   ssoClear: () => ipcRenderer.invoke('sso:clear'),
   ssoStatus: () => ipcRenderer.invoke('sso:status'),
   ssoGetCredentials: () => ipcRenderer.invoke('sso:getCredentials'),
+  slackGetMembers: () => ipcRenderer.invoke('slack:getMembers'),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 

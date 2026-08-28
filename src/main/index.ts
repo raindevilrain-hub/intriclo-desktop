@@ -1325,6 +1325,25 @@ if (!gotTheLock) {
     loadSpotlightPosition()
     log.info('Config:', CONFIG)
 
+    // ── Bitwarden 확장 로드 (진짜 자동입력) ──────────────────────
+    // AI챗봇/Mail Assistant/Slack 웹뷰가 공유하는 세션 파티션에 로드한다
+    // (connectionPartition.ts 의 SHARED_PARTITION 과 반드시 같은 문자열이어야
+    // 함 — 렌더러 전용 모듈이라 여기서 import 할 수 없어 값만 복제).
+    // Chrome 웹스토어의 압축판(.crx)은 못 쓰므로 bitwarden/clients 오픈소스를
+    // 직접 빌드해 resources/bitwarden-extension 에 넣어뒀다. Electron이 크롬
+    // 확장 API를 전부 지원하지는 않아 일부 기능(생체인증 등)은 안 될 수 있음.
+    try {
+      const extPath =
+        process.env.NODE_ENV === 'development' || is.dev
+          ? join(app.getAppPath(), 'resources', 'bitwarden-extension')
+          : join(process.resourcesPath, 'app.asar.unpacked', 'resources', 'bitwarden-extension')
+      const sharedSession = session.fromPartition('persist:intriclo-shared')
+      await sharedSession.extensions.loadExtension(extPath, { allowFileAccess: true })
+      log.info('Bitwarden 확장 로드 완료')
+    } catch (err) {
+      log.warn('Bitwarden 확장 로드 실패:', err)
+    }
+
     // ponytail: app.name은 userData 경로(%APPDATA%\<app.name>) 등 내부 경로 계산에
     // 쓰이는 기술 식별자라서 한글로 바꾸지 않는다(한글 경로에서 config.json을 못 찾거나
     // 매 실행마다 경로가 달라지는 버그로 이어짐 - 실사용자 실측으로 확인됨). 화면에 보이는
@@ -1758,11 +1777,48 @@ if (!gotTheLock) {
       }
     })
 
-    // Slack DM 은 웹뷰에 임베드하면 Slack의 봇 감지에 걸려 로그인 캡차 루프에
-    // 빠진다(#해결불가 — Electron 웹뷰 자체를 봇으로 판정). 진짜 브라우저에서만
-    // 뚫리므로, 시스템 기본 브라우저로 대신 연다.
+    // 웹뷰 임베드로는 못 여는 URL(슬랙 등)을 대신 열 때 쓴다. shell.openExternal
+    // 은 slack:// 같은 커스텀 프로토콜도 http(s):// 와 동일하게 OS 등록 핸들러로
+    // 넘겨준다.
     ipcMain.handle('connections:openExternal', (_event, url: string) => {
       openUrl(url)
+    })
+
+    // 사람별 슬랙 DM 바로가기용 사내 인원 목록. 저장된 SSO 자격증명으로
+    // Mail Assistant 에 직접 로그인해서(웹뷰 없이) /api/slack/members 를
+    // 부른다 — 별도 토큰을 앱에 심지 않고, 이미 있는 SSO 자격증명을 그대로 쓴다.
+    ipcMain.handle('slack:getMembers', async () => {
+      const creds = await (async () => {
+        try {
+          const raw = await readFile(ssoCredsPath())
+          return JSON.parse(safeStorage.decryptString(raw))
+        } catch {
+          return null
+        }
+      })()
+      if (!creds?.email || !creds?.password) return { needsSso: true, teamId: '', members: [] }
+
+      const cfg = await getConfig()
+      if (!cfg.mailAssistantUrl) return { needsSso: false, teamId: '', members: [] }
+      const base = cfg.mailAssistantUrl.replace(/\/$/, '')
+      try {
+        const loginRes = await fetch(`${base}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: creds.email, password: creds.password })
+        })
+        const setCookie = loginRes.headers.get('set-cookie')
+        const loginData = await loginRes.json().catch(() => null)
+        if (!loginData?.ok || !setCookie) return { needsSso: false, teamId: '', members: [] }
+
+        const cookie = setCookie.split(';')[0]
+        const listRes = await fetch(`${base}/api/slack/members`, { headers: { Cookie: cookie } })
+        const data = await listRes.json()
+        return { needsSso: false, teamId: data.team_id || '', members: data.members || [] }
+      } catch (err: any) {
+        log.warn('slack:getMembers 실패:', err)
+        return { needsSso: false, teamId: '', members: [] }
+      }
     })
 
     // Updater
