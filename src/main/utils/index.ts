@@ -903,6 +903,8 @@ export interface AppConfig {
 const DEFAULT_NAS_SERVER_URL = 'http://192.168.0.210:3099'
 const DEFAULT_MAIL_ASSISTANT_URL = 'http://192.168.0.210:5080'
 const DEFAULT_SLACK_URL = 'https://w1735528368-mo2137373.slack.com'
+// 옵시디언/KB 그래프 뷰(Quartz 정적 사이트) — 재미 요소, 로그인 불필요.
+const DEFAULT_GRAPH_URL = 'http://192.168.0.210:3008'
 
 const DEFAULT_CONFIG: AppConfig = {
   version: 1,
@@ -911,7 +913,8 @@ const DEFAULT_CONFIG: AppConfig = {
     { id: 'default-nas', name: '인트리클로 AI', type: 'remote', url: DEFAULT_NAS_SERVER_URL },
     { id: 'default-mail-assistant', name: 'Mail Assistant', type: 'remote', url: DEFAULT_MAIL_ASSISTANT_URL },
     // name은 반드시 정확히 'Slack'이어야 connectionPartition.ts의 공유세션 매칭과 맞음
-    { id: 'default-slack', name: 'Slack', type: 'remote', url: DEFAULT_SLACK_URL }
+    { id: 'default-slack', name: 'Slack', type: 'remote', url: DEFAULT_SLACK_URL },
+    { id: 'default-graph', name: '지식그래프', type: 'remote', url: DEFAULT_GRAPH_URL }
   ],
   runInBackground: true,
   globalShortcut: 'Alt+CommandOrControl+O',
@@ -974,6 +977,17 @@ export const getConfig = async (): Promise<AppConfig> => {
         merged.defaultConnectionId = DEFAULT_CONFIG.defaultConnectionId
         merged.mailAssistantUrl = DEFAULT_CONFIG.mailAssistantUrl
         merged.slackUrl = DEFAULT_CONFIG.slackUrl
+      } else if (
+        Array.isArray(merged.connections) &&
+        !merged.connections.some((c) => c.id === 'default-graph')
+      ) {
+        // 지식그래프 커넥션은 나중에 추가됐다 -- 이미 커스터마이징된 기존
+        // 설치본은 위 looksUntouched 분기를 안 타므로, 없으면 그냥 하나만
+        // 덧붙인다(다른 저장된 연결/설정은 그대로 둠).
+        merged.connections = [
+          ...merged.connections,
+          DEFAULT_CONFIG.connections.find((c) => c.id === 'default-graph')!
+        ]
       }
       return merged
     }
