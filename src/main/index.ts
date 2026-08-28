@@ -42,6 +42,7 @@ import {
   isUvInstalled,
   openUrl,
   resetApp,
+  resolveNasHost,
   setConfig,
   startServer,
   stopAllServers,
@@ -1977,6 +1978,44 @@ if (!gotTheLock) {
       }
     )
 
+    // 녹음 중 실시간 자막용. 12초쯤마다 완결된 webm 조각이 하나씩 들어오는데,
+    // 그때마다 로그인하면 회의 한 시간에 수백 번이 되므로 세션을 잠깐 캐시한다.
+    // 쿠키가 먼저 죽으면 응답이 non-ok 로 오니 그때 캐시를 버리고 다음 조각에서
+    // 다시 로그인한다.
+    let segmentSession: { base: string; cookie: string; at: number } | null = null
+    ipcMain.handle(
+      'meeting:transcribeSegment',
+      async (_event, audioBuffer: ArrayBuffer, mimeType: string) => {
+        try {
+          if (!segmentSession || Date.now() - segmentSession.at > 5 * 60 * 1000) {
+            const s = await loginToMailAssistant()
+            if (!s) return { ok: false, text: '' }
+            segmentSession = { ...s, at: Date.now() }
+          }
+
+          const form = new FormData()
+          const ext = mimeType.includes('webm') ? 'webm' : 'ogg'
+          form.append('audio', new Blob([audioBuffer], { type: mimeType }), `segment.${ext}`)
+
+          const res = await fetch(`${segmentSession.base}/api/meeting/transcribe-segment`, {
+            method: 'POST',
+            headers: { Cookie: segmentSession.cookie },
+            body: form
+          })
+          if (!res.ok) {
+            segmentSession = null
+            return { ok: false, text: '' }
+          }
+          const data = await res.json()
+          return { ok: Boolean(data?.ok), text: String(data?.text ?? '') }
+        } catch (err: any) {
+          // 자막이 실패해도 녹음 자체는 계속되어야 하니 조용히 넘긴다.
+          log.warn('meeting:transcribeSegment 실패:', err)
+          return { ok: false, text: '' }
+        }
+      }
+    )
+
     // Updater
     ipcMain.handle('updater:check', () => checkForUpdates())
     ipcMain.handle('updater:download', () => downloadUpdate())
@@ -2651,6 +2690,12 @@ if (!gotTheLock) {
     // SSO 자격증명이 저장돼 있으면 시작화면이 알아서 로그인 폼 대신
     // "연결을 선택하세요"만 보여주고, 실제 연결은 사이드바 클릭 한 번으로
     // 열림 — 그때도 이미 로그인된 세션이라 로그인 화면이 안 뜬다).
+    //
+    // 창을 띄우기 전에, 지금 사무실 안인지 밖인지 확인해서 NAS 주소를
+    // 사내망/Tailscale 중 닿는 쪽으로 맞춰둔다(밖에서도 그대로 쓰려면 필요).
+    // 최대 5초(2.5초 x 2) 걸리지만 그 뒤 모든 로그인/연결이 옳은 주소를 쓴다.
+    await resolveNasHost().catch((err) => log.warn('resolveNasHost 실패:', err))
+    CONFIG = await getConfig()
     createMainWindow()
 
     // Initialize auto-updater

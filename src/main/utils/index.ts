@@ -900,11 +900,17 @@ export interface AppConfig {
 // app lands on our NAS instance instead of the "set up a local server"
 // onboarding screen. Test-instance IP for now — swap these two constants
 // once a real domain is assigned; nothing else in the codebase hardcodes them.
-const DEFAULT_NAS_SERVER_URL = 'http://192.168.0.210:3099'
-const DEFAULT_MAIL_ASSISTANT_URL = 'http://192.168.0.210:5080'
+// NAS 주소는 두 가지다: 사무실 안에서 쓰는 사내망 IP와, 밖에서 쓰는
+// Tailscale(VPN) IP. 어느 쪽이 닿는지는 지금 어디에 있느냐에 따라 다르므로
+// 앱 시작 시 실제로 찔러보고 고른다(resolveNasHost 참고).
+export const NAS_LAN_HOST = '192.168.0.210'
+export const NAS_TAILSCALE_HOST = '100.83.167.66'
+
+const DEFAULT_NAS_SERVER_URL = `http://${NAS_LAN_HOST}:3099`
+const DEFAULT_MAIL_ASSISTANT_URL = `http://${NAS_LAN_HOST}:5080`
 const DEFAULT_SLACK_URL = 'https://w1735528368-mo2137373.slack.com'
 // 옵시디언/KB 그래프 뷰(Quartz 정적 사이트) — 재미 요소, 로그인 불필요.
-const DEFAULT_GRAPH_URL = 'http://192.168.0.210:3008'
+const DEFAULT_GRAPH_URL = `http://${NAS_LAN_HOST}:3008`
 
 const DEFAULT_CONFIG: AppConfig = {
   version: 1,
@@ -1024,6 +1030,60 @@ export const setConfig = async (config: Partial<AppConfig>): Promise<void> => {
   } finally {
     resolve!()
   }
+}
+
+/**
+ * 지금 사무실 안인지(사내망 IP가 닿는지) 밖인지(Tailscale IP만 닿는지)
+ * 실제로 찔러봐서 판단하고, 저장된 커넥션 URL들의 호스트를 그쪽으로
+ * 맞춰준다. 사내망을 먼저 시도한다 — 사무실 안에서는 굳이 VPN을 타고
+ * 돌아갈 이유가 없기 때문(더 빠르고, Tailscale이 꺼져 있어도 됨).
+ *
+ * 사용자가 직접 바꾼 커스텀 커넥션은 건드리지 않는다 — 우리 NAS의 두
+ * 호스트 중 하나를 쓰고 있는 URL만 갈아끼운다.
+ */
+export const resolveNasHost = async (): Promise<void> => {
+  const reachable = async (host: string): Promise<boolean> => {
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 2500)
+      // 로그인 없이 200을 주는 가벼운 엔드포인트로 확인.
+      await fetch(`http://${host}:3099/api/config`, { signal: controller.signal })
+      clearTimeout(timer)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const host = (await reachable(NAS_LAN_HOST))
+    ? NAS_LAN_HOST
+    : (await reachable(NAS_TAILSCALE_HOST))
+      ? NAS_TAILSCALE_HOST
+      : null
+  if (!host) {
+    log.warn('resolveNasHost: 사내망/Tailscale 둘 다 응답 없음 — 저장된 주소 그대로 둔다')
+    return
+  }
+
+  const cfg = await getConfig()
+  const swap = (url: string): string =>
+    url.replace(NAS_LAN_HOST, host).replace(NAS_TAILSCALE_HOST, host)
+
+  const connections = cfg.connections.map((c) =>
+    c.url && (c.url.includes(NAS_LAN_HOST) || c.url.includes(NAS_TAILSCALE_HOST))
+      ? { ...c, url: swap(c.url) }
+      : c
+  )
+  const changed =
+    JSON.stringify(connections) !== JSON.stringify(cfg.connections) ||
+    swap(cfg.mailAssistantUrl ?? '') !== cfg.mailAssistantUrl
+  if (!changed) return
+
+  await setConfig({
+    connections,
+    mailAssistantUrl: swap(cfg.mailAssistantUrl ?? '')
+  })
+  log.info(`resolveNasHost: NAS 주소를 ${host} 로 맞췄습니다`)
 }
 
 export const resetApp = async (): Promise<void> => {

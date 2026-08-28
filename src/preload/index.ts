@@ -181,6 +181,8 @@ const api = {
   slackGetMembers: () => ipcRenderer.invoke('slack:getMembers'),
   meetingUpload: (title: string, audioBuffer: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke('meeting:upload', title, audioBuffer, mimeType),
+  meetingTranscribeSegment: (audioBuffer: ArrayBuffer, mimeType: string) =>
+    ipcRenderer.invoke('meeting:transcribeSegment', audioBuffer, mimeType),
   checkIsAdmin: () => ipcRenderer.invoke('admin:isAdmin'),
   ssoLoginBoth: (email: string, password: string) =>
     ipcRenderer.invoke('sso:loginBoth', email, password),
