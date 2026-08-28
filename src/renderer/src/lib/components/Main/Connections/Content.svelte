@@ -61,6 +61,31 @@
   // 일반 계정이면 querySelector가 null이라 조용히 무시된다.
   const ADMIN_TAB_CLICK_SCRIPT = `document.querySelector('.tab-btn[data-tab="admin"]')?.click()`
 
+  // AI챗봇의 "Slack로 로그인" 버튼은 이 앱의 내장 웹뷰 안에서는 막다른 길이다
+  // (Slack이 임베드된 창을 감지해서 로그인 화면에서 못 넘어가는 문제 — Slack DM을
+  // 웹뷰 대신 slack:// 딥링크로 뺀 것과 같은 이유). 실수로 누르는 일이 없게
+  // 아예 숨긴다. 이메일/비밀번호 로그인(SSO 자동 로그인 포함)은 영향 없음.
+  const HIDE_SLACK_LOGIN_BUTTON_SCRIPT = `
+    (function () {
+      // 로그인 전(토큰 없음)에만 동작 — 로그인 후에는 손대지 않는다(앱 안 다른
+      // 곳에 "Slack" 텍스트가 들어간 정상 버튼을 실수로 숨기지 않기 위함).
+      const hide = () => {
+        if (localStorage.getItem('token')) {
+          window.__intricloHideSlackObserver?.disconnect()
+          return
+        }
+        document.querySelectorAll('button, a').forEach((el) => {
+          if (el.textContent && el.textContent.includes('Slack')) el.style.display = 'none'
+        })
+      }
+      hide()
+      if (!window.__intricloHideSlackObserver) {
+        window.__intricloHideSlackObserver = new MutationObserver(hide)
+        window.__intricloHideSlackObserver.observe(document.body, { childList: true, subtree: true })
+      }
+    })()
+  `
+
   let showGetStartedModal = $state(false)
 
   // ── 회사 계정 자동 로그인 (SSO) ──────────────────────────────────
@@ -222,6 +247,9 @@
         // 시도한다(이미 로그인돼 있으면 스크립트 안에서 조용히 스킵).
         // did-finish-load 는 did-stop-loading과 달리 실패한 로드에는 안 걸린다.
         wv.addEventListener('did-finish-load', async () => {
+          if (connId === 'default-nas') {
+            wv.executeJavaScript(HIDE_SLACK_LOGIN_BUTTON_SCRIPT).catch(() => {})
+          }
           const ssoResult = await attemptSsoLogin(wv, connId)
           // 사이드바 "관리자" 버튼으로 열었을 때만 세팅되는 플래그. ssoResult
           // === 'ok' 면 로그인 성공 직후 페이지가 다시 이동(reload/redirect)
