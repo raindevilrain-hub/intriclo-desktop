@@ -652,9 +652,10 @@
             wv?.reload?.()
           }
         }
-        // 화면엔 Mail Assistant를 보여준다 — AI챗봇은 뒤에서 같이 로그인된다.
-        connect('default-nas')
+        // 둘 다 열어두되(뒤에서 세션 유지), 마지막에 연 것이 화면에 보이므로
+        // 앱 이름과 같은 AI챗봇을 마지막에 열어 그 화면으로 입장하게 한다.
         connect('default-mail-assistant')
+        connect('default-nas')
       }}
     />
   </div>

@@ -87,7 +87,11 @@
     if (ssoSaved) {
       try {
         const result = await window.electronAPI.ssoLoginSaved?.()
-        applyLoginResult(result, true)
+        // 성공하면 로그인 화면에 머무르지 않고 곧장 프로그램 안으로 들어간다
+        // (원칙: 로그인은 입장 전에 한 번, 그 뒤로는 다시 묻지 않는다).
+        if (applyLoginResult(result, true)) {
+          onSsoLoggedIn?.()
+        }
       } catch {
         welcomeError = '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
       }
@@ -609,7 +613,11 @@
           <div class="text-center max-w-[320px]" in:fade={{ duration: 200 }}>
             <div class="text-lg opacity-80 mb-1.5">{$i18n.t('app.name')}</div>
 
-            {#if ssoSaved !== null}
+            <!-- 원칙: 로그인은 프로그램에 들어가기 전에 딱 한 번.
+                 이미 로그인된 상태(양쪽 인증 완료)면 폼을 아예 보여주지 않는다.
+                 ssoSaved === null 은 아직 확인 중이라는 뜻이라 그때도 안 띄운다
+                 (잠깐 떴다 사라지면 "로그인하라는 건가?" 하고 혼란스럽다). -->
+            {#if ssoSaved !== null && !(nasAuthenticated && mailAuthenticated)}
               <div class="text-left mt-3 mb-6 p-4 rounded-2xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/[0.06] dark:border-white/[0.08]">
                 <div class="text-[13px] font-medium">회사 계정으로 한 번에 로그인</div>
                 <div class="text-[11px] opacity-40 mt-0.5 mb-3">
@@ -617,7 +625,7 @@
                 </div>
                 {#if ssoSaved}
                   <div class="text-[11px] opacity-40 mb-2">
-                    저장된 계정이 있지만, 로그인이 안 되면 아래에 다시 입력하고 눌러주세요(기존 정보를 덮어씁니다).
+                    저장된 계정으로 로그인하지 못했습니다. 아래에 다시 입력해주세요(기존 정보를 덮어씁니다).
                   </div>
                 {/if}
                 <form
