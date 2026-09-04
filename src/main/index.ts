@@ -158,6 +158,30 @@ if (gpuSandboxDisabled) {
 // repeated GPU process crashes within the same session.
 app.disableDomainBlockingFor3DAPIs()
 
+/**
+ * 이 URL이 "로그인 진행 중"인 주소인가.
+ *
+ * 웹뷰는 기본적으로 다른 도메인으로 나가면 외부 브라우저로 넘긴다(사용자가
+ * 링크를 눌러 앱 밖으로 나가는 걸 막기 위한 규칙). 그런데 Slack 로그인은
+ * 우리 서버 -> slack.com -> 우리 서버 로 도메인을 오가는 게 정상 흐름이라,
+ * 그 규칙에 걸리면 인증이 외부 브라우저에서 끝나고 앱에는 세션이 안 남는다.
+ * (2026-09-04: 실제로 이것 때문에 앱이 90초 타임아웃을 냈다 — 브라우저에는
+ *  로그인이 돼 있는데 앱만 모르는 상태였다.)
+ *
+ * 그래서 로그인에 관여하는 도메인만 예외로 두고 웹뷰 안에 붙잡아둔다.
+ * 로그인이 끝나면 우리 서버로 돌아오므로 예외 범위가 계속 열려 있지 않다.
+ */
+const AUTH_HOST_SUFFIXES = ['slack.com', 'slack-edge.com', 'slackb.com']
+
+const isAuthNavigation = (url: string): boolean => {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return AUTH_HOST_SUFFIXES.some((s) => host === s || host.endsWith('.' + s))
+  } catch {
+    return false
+  }
+}
+
 // ─── State ──────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null
@@ -1480,6 +1504,9 @@ if (!gotTheLock) {
       if (contents.getType() === 'webview') {
         // ── Popups (target="_blank" links) → open in default browser ──
         contents.setWindowOpenHandler(({ url }) => {
+          // 로그인 흐름(Slack OAuth)은 팝업으로 뜨더라도 앱 안에서 끝나야
+          // 세션이 앱에 남는다. 외부로 던지면 브라우저에서만 로그인된다.
+          if (isAuthNavigation(url)) return { action: 'allow' }
           openUrl(url)
           return { action: 'deny' }
         })
@@ -1491,10 +1518,17 @@ if (!gotTheLock) {
           try {
             const currentOrigin = new URL(contents.getURL()).origin
             const targetOrigin = new URL(url).origin
-            if (targetOrigin !== currentOrigin) {
-              event.preventDefault()
-              openUrl(url)
-            }
+            if (targetOrigin === currentOrigin) return
+
+            // "Slack으로 로그인"은 우리 서버 -> slack.com -> 우리 서버 로
+            // 도메인을 넘나드는 게 정상 흐름이다. 이걸 외부 브라우저로
+            // 던져버리면 인증이 브라우저에서 끝나고 앱에는 세션이 안 남아,
+            // 앱은 영문도 모른 채 타임아웃한다(2026-09-04 실제로 겪음).
+            // 그래서 로그인 흐름에 관여하는 도메인만 웹뷰 안에 붙잡아둔다.
+            if (isAuthNavigation(url)) return
+
+            event.preventDefault()
+            openUrl(url)
           } catch {
             // Malformed URL — let it through so Chromium can handle/reject it
           }
