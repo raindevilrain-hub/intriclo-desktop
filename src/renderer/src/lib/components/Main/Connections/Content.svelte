@@ -8,6 +8,7 @@
   import AddConnectionModal from './AddConnectionModal.svelte'
   import landingVideo from '../../../../assets/landing.mp4'
   import { getConnectionPartition } from '../../../connectionPartition'
+  import { isBackFromSlack } from '../../../slackLogin'
 
   interface Props {
     sidebarOpen: boolean
@@ -70,6 +71,9 @@
   let welcomePassword = $state('')
   let welcomeSaving = $state(false)
   let welcomeError = $state('')
+  // 기본은 "Slack으로 로그인" 하나. 이메일+비밀번호는 슬랙 계정이 없거나
+  // Slack이 죽었을 때를 위한 대체 경로라 토글 뒤에 접어둔다.
+  let showPasswordLogin = $state(false)
 
   // dom-ready 리스너(위)가 소비하는 일회성 값 — UI에 안 쓰이므로 $state 아님.
   let pendingNasToken: string | null = null
@@ -91,10 +95,138 @@
         // (원칙: 로그인은 입장 전에 한 번, 그 뒤로는 다시 묻지 않는다).
         if (applyLoginResult(result, true)) {
           onSsoLoggedIn?.()
+          return
         }
       } catch {
         welcomeError = '저장된 계정으로 로그인이 안 됐습니다. 아래에 다시 입력해주세요.'
       }
+    }
+    // 저장된 자격증명이 없거나(=Slack으로 로그인한 사람) 실패했으면, 지난번
+    // 로그인 쿠키가 공유 파티션에 아직 살아 있는지 본다. 살아 있으면 아무것도
+    // 묻지 않고 그대로 입장 — 재시작 때마다 로그인하게 두지 않기 위함.
+    const s = await window.electronAPI.ssoCheckSession?.().catch(() => null)
+    if (s?.nas && s?.mail) {
+      nasAuthenticated = true
+      mailAuthenticated = true
+      welcomeError = ''
+      onSsoLoggedIn?.()
+    }
+  })
+
+  // ── Slack으로 로그인 ────────────────────────────────────────────
+  // 버튼 한 번 → 보이는 웹뷰로 Mail Assistant(/auth/slack/login) 인증 →
+  // 같은 웹뷰로 AI챗봇(/oauth/oidc/login) 인증. 두 서비스가 같은 Slack 앱을
+  // 쓰고 웹뷰가 persist:intriclo-shared 파티션을 공유하므로, 두 번째는 Slack이
+  // 자동 승인해서 사용자가 다시 누를 게 없다. 두 서버 모두 자기 도메인에 세션
+  // 쿠키를 심으므로 토큰을 따로 주입할 필요도 없다.
+  const SLACK_STEP_TIMEOUT_MS = 90000
+
+  let slackPhase = $state<'' | 'mail' | 'nas'>('') // '' = 로그인 웹뷰 안 띄운 상태
+  let slackWebviewUrl = $state('')
+  let slackWebviewEl = $state<any>(null)
+  let slackStepBase = $state('')
+  // 진행 중인 단계를 끝내는 resolve + 타이머들. UI에 안 쓰이므로 $state 아님.
+  let slackStepDone: ((ok: boolean) => void) | null = null
+  let slackStepTimer: ReturnType<typeof setTimeout> | null = null
+  let slackPollTimer: ReturnType<typeof setInterval> | null = null
+  // 취소/재시작하면 증가시켜서, 뒤늦게 끝난 예전 단계가 화면을 건드리지 못하게 한다.
+  let slackRun = 0
+
+  const connBase = (id: string): string =>
+    (remoteConnections.find((c: any) => c.id === id)?.url ?? '').replace(/\/$/, '')
+
+  const finishSlackStep = (ok: boolean) => {
+    const done = slackStepDone
+    slackStepDone = null
+    if (slackStepTimer) clearTimeout(slackStepTimer)
+    if (slackPollTimer) clearInterval(slackPollTimer)
+    slackStepTimer = null
+    slackPollTimer = null
+    done?.(ok)
+  }
+
+  // 성공 판정은 URL이 아니라 실제 세션이 생겼는지로 한다(slackLogin.ts 참고).
+  const checkSlackStep = async () => {
+    if (!slackStepDone) return
+    const s = await window.electronAPI.ssoCheckSession?.().catch(() => null)
+    if (s?.[slackPhase === 'nas' ? 'nas' : 'mail']) finishSlackStep(true)
+  }
+
+  const runSlackStep = (phase: 'mail' | 'nas', url: string, base: string) =>
+    new Promise<boolean>((resolve) => {
+      // 겹쳐 들어온 이전 단계가 있으면 먼저 정리한다 — 안 그러면 그 단계의
+      // 90초 타이머가 살아남아 나중에 이번 단계를 죽인다(버튼 연타 시).
+      finishSlackStep(false)
+      slackPhase = phase
+      slackStepBase = base
+      slackStepDone = resolve
+      slackWebviewUrl = url
+      slackStepTimer = setTimeout(() => finishSlackStep(false), SLACK_STEP_TIMEOUT_MS)
+      // did-navigate 를 놓쳐도(웹뷰 생성과 이동이 겹치는 등) 무한 대기하지
+      // 않게 하는 보조 확인.
+      slackPollTimer = setInterval(checkSlackStep, 3000)
+    })
+
+  // 성공·실패·취소 모두 여기로 모아 웹뷰를 걷어내고 상태를 원복한다.
+  const endSlackLogin = (message: string) => {
+    slackRun++
+    finishSlackStep(false)
+    slackPhase = ''
+    slackWebviewUrl = ''
+    slackStepBase = ''
+    welcomeError = message
+  }
+
+  const startSlackLogin = async () => {
+    const mailBase = connBase('default-mail-assistant')
+    const nasBase = connBase('default-nas')
+    if (!mailBase || !nasBase) {
+      welcomeError = 'AI챗봇/Mail Assistant 연결 주소를 찾을 수 없습니다. 설정에서 연결을 확인해주세요.'
+      return
+    }
+    welcomeError = ''
+    const run = ++slackRun
+
+    // 이미 살아 있는 쿠키가 있으면 그 단계는 건너뛴다.
+    const pre = await window.electronAPI.ssoCheckSession?.().catch(() => null)
+    if (run !== slackRun) return
+
+    if (!pre?.mail) {
+      const ok = await runSlackStep('mail', `${mailBase}/auth/slack/login`, mailBase)
+      if (run !== slackRun) return // 취소됨
+      if (!ok) {
+        endSlackLogin('Mail Assistant Slack 로그인이 끝나지 않았습니다(90초 초과). 다시 시도하거나 아래 "다른 방법으로 로그인"을 이용해주세요.')
+        return
+      }
+    }
+
+    if (!pre?.nas) {
+      const ok = await runSlackStep('nas', `${nasBase}/oauth/oidc/login`, nasBase)
+      if (run !== slackRun) return // 취소됨
+      if (!ok) {
+        endSlackLogin('AI챗봇 Slack 로그인이 끝나지 않았습니다(90초 초과). 다시 시도하거나 아래 "다른 방법으로 로그인"을 이용해주세요.')
+        return
+      }
+    }
+
+    endSlackLogin('')
+    nasAuthenticated = true
+    mailAuthenticated = true
+    onSsoLoggedIn?.()
+  }
+
+  // 웹뷰가 Slack에서 우리 서버로 돌아오는 순간 바로 확인한다(3초 폴링보다 빠름).
+  $effect(() => {
+    const wv = slackWebviewEl
+    if (!wv) return
+    const onNav = (e: any) => {
+      if (isBackFromSlack(e?.url ?? '', slackStepBase)) checkSlackStep()
+    }
+    wv.addEventListener('did-navigate', onNav)
+    wv.addEventListener('did-navigate-in-page', onNav)
+    return () => {
+      wv.removeEventListener('did-navigate', onNav)
+      wv.removeEventListener('did-navigate-in-page', onNav)
     }
   })
 
@@ -494,6 +626,35 @@
     ></webview>
   {/each}
 
+  <!-- Slack 로그인 웹뷰 — 시작화면 자리를 덮는다. 커넥션 웹뷰가 아니므로
+       data-conn-id 를 주지 않는다(위 MutationObserver가 손대지 않게). -->
+  {#if slackPhase}
+    <div class="absolute inset-0 z-30 flex flex-col bg-[#eee] dark:bg-[#111]">
+      <div class="flex items-center gap-3 px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08]">
+        <div class="w-3.5 h-3.5 rounded-full border-2 border-black/10 dark:border-white/15 border-t-black/50 dark:border-t-white/50 animate-spin"></div>
+        <span class="text-[12px] opacity-50">
+          {slackPhase === 'mail'
+            ? 'Slack으로 로그인 중… (1/2 Mail Assistant)'
+            : 'Slack으로 로그인 중… (2/2 AI챗봇)'}
+        </span>
+        <button
+          class="ml-auto text-[11px] px-3 py-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] opacity-60 hover:opacity-90 transition border-none text-[#1d1d1f] dark:text-[#fafafa] cursor-pointer"
+          onclick={() => endSlackLogin('')}
+        >
+          {$i18n.t('common.cancel')}
+        </button>
+      </div>
+      <webview
+        bind:this={slackWebviewEl}
+        src={slackWebviewUrl}
+        class="flex-1 min-h-0 border-none"
+        partition={getConnectionPartition('default-nas')}
+        useragent={WEBVIEW_USER_AGENT}
+        allowpopups
+      ></webview>
+    </div>
+  {/if}
+
   <!-- Error overlay when webview fails to load -->
   {#if activeWebviewError}
     <div class="absolute inset-0 z-20 flex items-center justify-center bg-[#eee] dark:bg-[#111]" transition:fade={{ duration: 200 }}>
@@ -623,43 +784,64 @@
                 <div class="text-[11px] opacity-40 mt-0.5 mb-3">
                   AI챗봇 + Mail Assistant 둘 다 자동으로 로그인됩니다.
                 </div>
-                {#if ssoSaved}
-                  <div class="text-[11px] opacity-40 mb-2">
-                    저장된 계정으로 로그인하지 못했습니다. 아래에 다시 입력해주세요(기존 정보를 덮어씁니다).
-                  </div>
-                {/if}
-                <form
-                  class="flex flex-col gap-2"
-                  onsubmit={(e) => {
-                    e.preventDefault()
-                    submitWelcomeLogin()
-                  }}
+
+                <button
+                  class="w-full px-3 py-2 rounded-xl bg-black dark:bg-white text-white dark:text-black text-[12px] border-none cursor-pointer transition hover:opacity-90 active:scale-[0.98]"
+                  onclick={startSlackLogin}
                 >
-                  <input
-                    type="email"
-                    placeholder="이메일"
-                    autocomplete="username"
-                    bind:value={welcomeEmail}
-                    class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
-                  />
-                  <input
-                    type="password"
-                    placeholder="비밀번호"
-                    autocomplete="current-password"
-                    bind:value={welcomePassword}
-                    class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
-                  />
-                  {#if welcomeError}
-                    <div class="text-[11px] text-red-400">{welcomeError}</div>
+                  Slack으로 로그인
+                </button>
+                {#if welcomeError && !showPasswordLogin}
+                  <div class="text-[11px] text-red-400 mt-2">{welcomeError}</div>
+                {/if}
+
+                <!-- Slack 계정이 없거나 Slack 장애일 때를 위한 대체 경로. -->
+                <button
+                  class="mt-2 text-[11px] opacity-40 hover:opacity-70 transition bg-transparent border-none cursor-pointer text-[#1d1d1f] dark:text-[#fafafa] p-0"
+                  onclick={() => { showPasswordLogin = !showPasswordLogin }}
+                >
+                  {showPasswordLogin ? '접기' : '다른 방법으로 로그인'}
+                </button>
+
+                {#if showPasswordLogin}
+                  {#if ssoSaved}
+                    <div class="text-[11px] opacity-40 mt-2 mb-2">
+                      저장된 계정으로 로그인하지 못했습니다. 아래에 다시 입력해주세요(기존 정보를 덮어씁니다).
+                    </div>
                   {/if}
-                  <button
-                    type="submit"
-                    disabled={welcomeSaving}
-                    class="px-3 py-1.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-[12px] disabled:opacity-40 border-none"
+                  <form
+                    class="flex flex-col gap-2 mt-2"
+                    onsubmit={(e) => {
+                      e.preventDefault()
+                      submitWelcomeLogin()
+                    }}
                   >
-                    {welcomeSaving ? '로그인 중…' : '로그인'}
-                  </button>
-                </form>
+                    <input
+                      type="email"
+                      placeholder="이메일"
+                      autocomplete="username"
+                      bind:value={welcomeEmail}
+                      class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
+                    />
+                    <input
+                      type="password"
+                      placeholder="비밀번호"
+                      autocomplete="current-password"
+                      bind:value={welcomePassword}
+                      class="bg-black/[0.04] dark:bg-white/[0.06] text-[12px] px-3 py-1.5 border-none outline-none rounded-xl"
+                    />
+                    {#if welcomeError}
+                      <div class="text-[11px] text-red-400">{welcomeError}</div>
+                    {/if}
+                    <button
+                      type="submit"
+                      disabled={welcomeSaving}
+                      class="px-3 py-1.5 rounded-xl bg-black dark:bg-white text-white dark:text-black text-[12px] disabled:opacity-40 border-none"
+                    >
+                      {welcomeSaving ? '로그인 중…' : '로그인'}
+                    </button>
+                  </form>
+                {/if}
               </div>
             {:else}
               <div class="text-[12px] opacity-30 mb-6">

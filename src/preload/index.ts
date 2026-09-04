@@ -187,6 +187,8 @@ const api = {
   ssoLoginBoth: (email: string, password: string) =>
     ipcRenderer.invoke('sso:loginBoth', email, password),
   ssoLoginSaved: () => ipcRenderer.invoke('sso:loginSaved'),
+  // 공유 세션 쿠키로 이미 로그인돼 있는지 확인 → { nas, mail }
+  ssoCheckSession: () => ipcRenderer.invoke('sso:checkSession'),
   validateUrl: (url: string) => ipcRenderer.invoke('validate:url', url),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
 

@@ -1935,6 +1935,42 @@ if (!gotTheLock) {
       return performLoginBoth(creds.email, creds.password)
     })
 
+    // "Slack으로 로그인"은 두 서버가 각자 자기 도메인에 세션 쿠키를 심는
+    // 방식이라, 자격증명이 디스크에 남지 않는다. 대신 공유 파티션
+    // (persist:intriclo-shared)의 쿠키가 아직 유효한지를 물어보면 된다 —
+    // 재시작 시 "이미 로그인돼 있음"을 판정하는 유일한 근거이고, Slack 로그인
+    // 진행 중에는 각 단계가 끝났는지 판정하는 근거이기도 하다.
+    // (URL만으로는 판정 못 한다: Open WebUI는 성공도 실패도 /auth 로 돌아온다.)
+    const checkSharedSession = async (base: string, path: string): Promise<boolean> => {
+      if (!base) return false
+      const url = base.replace(/\/$/, '')
+      try {
+        const cookies = await session.fromPartition('persist:intriclo-shared').cookies.get({ url })
+        if (cookies.length === 0) return false
+        const res = await fetch(`${url}${path}`, {
+          headers: { Cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; ') }
+        })
+        return res.ok
+      } catch (err) {
+        log.warn('sso:checkSession 확인 실패:', url + path, err)
+        return false
+      }
+    }
+
+    ipcMain.handle('sso:checkSession', async () => {
+      const cfg = await getConfig()
+      const conns = cfg.connections ?? []
+      const nasUrl = conns.find((c: any) => c.id === 'default-nas')?.url ?? ''
+      const mailUrl =
+        conns.find((c: any) => c.id === 'default-mail-assistant')?.url ?? cfg.mailAssistantUrl ?? ''
+      // 둘 다 로그인 안 됐으면 401, 됐으면 200 인 엔드포인트(실측 확인함).
+      const [nas, mail] = await Promise.all([
+        checkSharedSession(nasUrl, '/api/v1/auths/'),
+        checkSharedSession(mailUrl, '/api/me')
+      ])
+      return { nas, mail }
+    })
+
     // 사이드바 "관리자" 줄을 관리자 계정에게만 보여주기 위한 확인.
     // Mail Assistant의 /api/me 가 로그인한 계정의 is_admin 을 갖고 있다.
     ipcMain.handle('admin:isAdmin', async () => {
