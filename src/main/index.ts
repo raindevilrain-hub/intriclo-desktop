@@ -1991,6 +1991,22 @@ if (!gotTheLock) {
       }
     }
 
+    // AI챗봇(Open WebUI) 프론트엔드는 쿠키가 아니라 localStorage.token 으로
+    // 로그인 상태를 판단한다(쿠키를 읽어 localStorage 로 옮기는 건 /auth 페이지가
+    // 한다). Slack 로그인은 쿠키만 심으므로, 웹뷰를 그냥 루트로 열면 계속 로그인
+    // 화면이 뜬다. 그래서 여기서 쿠키의 token 값을 꺼내 렌더러로 돌려주면,
+    // 렌더러가 비밀번호 로그인 때와 똑같이 localStorage 에 주입한다.
+    const nasTokenFromCookie = async (base: string): Promise<string | null> => {
+      if (!base) return null
+      try {
+        const url = base.replace(/\/$/, '')
+        const cookies = await session.fromPartition('persist:intriclo-shared').cookies.get({ url })
+        return cookies.find((c) => c.name === 'token')?.value ?? null
+      } catch {
+        return null
+      }
+    }
+
     ipcMain.handle('sso:checkSession', async () => {
       const cfg = await getConfig()
       const conns = cfg.connections ?? []
@@ -2002,7 +2018,8 @@ if (!gotTheLock) {
         checkSharedSession(nasUrl, '/api/v1/auths/'),
         checkSharedSession(mailUrl, '/api/me')
       ])
-      return { nas, mail }
+      const nasToken = nas ? await nasTokenFromCookie(nasUrl) : null
+      return { nas, mail, nasToken }
     })
 
     // 사이드바 "관리자" 줄을 관리자 계정에게만 보여주기 위한 확인.

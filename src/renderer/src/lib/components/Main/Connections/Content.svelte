@@ -106,6 +106,9 @@
     // 묻지 않고 그대로 입장 — 재시작 때마다 로그인하게 두지 않기 위함.
     const s = await window.electronAPI.ssoCheckSession?.().catch(() => null)
     if (s?.nas && s?.mail) {
+      // AI챗봇은 쿠키만으로는 프론트가 로그인으로 안 치므로, 쿠키에서 꺼낸
+      // 토큰을 웹뷰 로드 직전 localStorage 에 넣어준다(비밀번호 로그인과 동일).
+      pendingNasToken = s.nasToken ?? null
       nasAuthenticated = true
       mailAuthenticated = true
       welcomeError = ''
@@ -208,6 +211,10 @@
         return
       }
     }
+
+    // AI챗봇 쿠키에서 토큰을 꺼내 localStorage 주입용으로 넘긴다(위와 같은 이유).
+    const fin = await window.electronAPI.ssoCheckSession?.().catch(() => null)
+    pendingNasToken = fin?.nasToken ?? null
 
     endSlackLogin('')
     nasAuthenticated = true
