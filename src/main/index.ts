@@ -2298,6 +2298,30 @@ if (!gotTheLock) {
       widgetWindow.setPosition(Math.round(x), Math.round(y))
     })
 
+    // 위젯 메뉴가 열릴 때 창을 잠깐 키운다(아이콘 크기 창이면 메뉴가 잘림).
+    // 우측 하단 모서리를 고정한 채 키웠다가, 닫히면 아이콘 크기로 되돌린다.
+    // 창은 프레임 없는 투명 창이라 늘어난 여백은 안 보이고 메뉴/아이콘만 보인다.
+    ipcMain.on('widget:menuOpen', (_event, open: boolean) => {
+      if (!widgetWindow || widgetWindow.isDestroyed() || widgetExpanded) return
+      const b = widgetWindow.getBounds()
+      const right = b.x + b.width
+      const bottom = b.y + b.height
+      const w = open ? 220 : WIDGET_ICON_SIZE
+      const h = open ? 200 : WIDGET_ICON_SIZE
+      widgetWindow.setBounds({ x: right - w, y: bottom - h, width: w, height: h })
+    })
+
+    // 플로팅 위젯 메뉴의 "회의 녹음" → 메인 창을 띄우고 녹음 화면을 연다.
+    // (녹음은 마이크 권한 때문에 메인 렌더러에서 돌아야 하므로 위젯 창이 직접
+    // 녹음하지 않고 메인 창에 신호만 보낸다.)
+    ipcMain.handle('widget:startMeeting', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+      sendToRenderer('meeting:open', {})
+    })
+
     // Floating widget: toggle between the docked icon and the expanded
     // panel. Resizes the window in place and (only when expanding) resolves
     // the current default connection URL for the renderer's <webview>.

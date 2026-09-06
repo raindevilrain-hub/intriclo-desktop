@@ -61,11 +61,33 @@
     }
   }
 
+  // 아이콘을 누르면 바로 챗봇을 펼치지 않고, 먼저 작은 메뉴를 띄운다.
+  // (플로팅 하나에서 AI질문/회의녹음 두 기능으로 갈라지게 — 두 플로팅 통합)
+  let menuOpen = $state(false)
+
   const handlePointerUp = () => {
     if (dragging && !moved) {
-      toggle()
+      if (expanded) {
+        // 챗봇이 펼쳐진 상태에서 헤더를 누르면 접기(기존 동작 유지)
+        toggle()
+      } else {
+        menuOpen = !menuOpen
+        window.widgetAPI?.menuOpen?.(menuOpen) // 창 크기 확장/복원
+      }
     }
     dragging = false
+  }
+
+  const chooseAi = () => {
+    menuOpen = false
+    window.widgetAPI?.menuOpen?.(false)
+    toggle() // 기존 동작: 챗봇 패널 펼치기
+  }
+
+  const chooseMeeting = async () => {
+    menuOpen = false
+    window.widgetAPI?.menuOpen?.(false)
+    await window.widgetAPI?.startMeeting?.()
   }
 </script>
 
@@ -90,15 +112,27 @@
     </div>
   </div>
 {:else}
-  <button
-    class="icon"
-    onpointerdown={handlePointerDown}
-    onpointermove={handlePointerMove}
-    onpointerup={handlePointerUp}
-    aria-label="Open 인트리클로 AI widget"
-  >
-    <img src={logoImage} alt="" />
-  </button>
+  <div class="dock">
+    {#if menuOpen}
+      <div class="menu">
+        <button class="menu-item" onpointerup={chooseAi}>
+          <span class="menu-ic">💬</span> AI에게 질문
+        </button>
+        <button class="menu-item" onpointerup={chooseMeeting}>
+          <span class="menu-ic">🎙️</span> 회의 녹음
+        </button>
+      </div>
+    {/if}
+    <button
+      class="icon"
+      onpointerdown={handlePointerDown}
+      onpointermove={handlePointerMove}
+      onpointerup={handlePointerUp}
+      aria-label="인트리클로 AI 위젯 열기"
+    >
+      <img src={logoImage} alt="" />
+    </button>
+  </div>
 {/if}
 
 <style>
@@ -109,6 +143,49 @@
     background: transparent;
     overflow: hidden;
     user-select: none;
+  }
+
+  .dock {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .menu {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    border: none;
+    background: transparent;
+    color: #1d1d1f;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 9px 14px 9px 10px;
+    border-radius: 9px;
+    cursor: pointer;
+  }
+  .menu-item:hover { background: rgba(0, 0, 0, 0.06); }
+  .menu-ic { font-size: 15px; }
+
+  @media (prefers-color-scheme: dark) {
+    .menu { background: #1c1c1f; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6); }
+    .menu-item { color: #fafafa; }
+    .menu-item:hover { background: rgba(255, 255, 255, 0.08); }
   }
 
   .icon {

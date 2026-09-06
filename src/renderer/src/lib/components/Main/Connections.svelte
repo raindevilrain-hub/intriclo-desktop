@@ -496,6 +496,8 @@
       }
 
       // ── Desktop-only state (not forwarded to webviews) ─
+      // 플로팅 위젯 메뉴의 "회의 녹음"이 메인 창에 보내는 신호.
+      if (data.type === 'meeting:open') { showMeetingRecorder = true; return }
       if (data.type === 'status:open-terminal') { openTerminalStatus = data.data; return }
       if (data.type === 'status:open-terminal-setup') { openTerminalSetupStatus = data.data ?? ''; return }
       if (data.type === 'open-terminal:ready') { openTerminalInfo = data.data; openTerminalStatus = 'started'; openTerminalSetupStatus = ''; return }

@@ -12,6 +12,10 @@ const api = {
   getPosition: (): Promise<{ x: number; y: number }> => ipcRenderer.invoke('widget:getPosition'),
   setPosition: (x: number, y: number): void => {
     ipcRenderer.send('widget:setPosition', x, y)
+  },
+  startMeeting: (): Promise<void> => ipcRenderer.invoke('widget:startMeeting'),
+  menuOpen: (open: boolean): void => {
+    ipcRenderer.send('widget:menuOpen', open)
   }
 }
 
