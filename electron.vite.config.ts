@@ -17,7 +17,8 @@ export default defineConfig({
           'content-preload': resolve(__dirname, 'src/preload/content-preload.ts'),
           'spotlight-preload': resolve(__dirname, 'src/preload/spotlight-preload.ts'),
           'voice-input-preload': resolve(__dirname, 'src/preload/voice-input-preload.ts'),
-          'widget-preload': resolve(__dirname, 'src/preload/widget-preload.ts')
+          'widget-preload': resolve(__dirname, 'src/preload/widget-preload.ts'),
+          'meeting-bar-preload': resolve(__dirname, 'src/preload/meeting-bar-preload.ts')
         }
       }
     }
@@ -29,7 +30,8 @@ export default defineConfig({
           index: resolve(__dirname, 'src/renderer/index.html'),
           spotlight: resolve(__dirname, 'src/renderer/spotlight.html'),
           'voice-input': resolve(__dirname, 'src/renderer/voice-input.html'),
-          widget: resolve(__dirname, 'src/renderer/widget.html')
+          widget: resolve(__dirname, 'src/renderer/widget.html'),
+          'meeting-bar': resolve(__dirname, 'src/renderer/meeting-bar.html')
         }
       }
     },

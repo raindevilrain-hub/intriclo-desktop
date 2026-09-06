@@ -179,10 +179,30 @@ const api = {
   ssoStatus: () => ipcRenderer.invoke('sso:status'),
   ssoGetCredentials: () => ipcRenderer.invoke('sso:getCredentials'),
   slackGetMembers: () => ipcRenderer.invoke('slack:getMembers'),
-  meetingUpload: (title: string, audioBuffer: ArrayBuffer, mimeType: string) =>
-    ipcRenderer.invoke('meeting:upload', title, audioBuffer, mimeType),
+  meetingUpload: (
+    title: string,
+    audioBuffer: ArrayBuffer,
+    mimeType: string,
+    options?: { saveAudio?: boolean; emails?: string; slackChannel?: string }
+  ) => ipcRenderer.invoke('meeting:upload', title, audioBuffer, mimeType, options ?? {}),
   meetingTranscribeSegment: (audioBuffer: ArrayBuffer, mimeType: string) =>
     ipcRenderer.invoke('meeting:transcribeSegment', audioBuffer, mimeType),
+
+  // Meeting floating bar (별도 always-on-top 바 창 제어 + 신호 수신)
+  meetingBarShow: () => ipcRenderer.invoke('meetingBar:show'),
+  meetingBarHide: () => ipcRenderer.invoke('meetingBar:hide'),
+  meetingBarUpdate: (elapsed: number, phase: string) =>
+    ipcRenderer.send('meetingBar:update', elapsed, phase),
+  onMeetingBarExpand: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('meetingBar:expand', handler)
+    return () => ipcRenderer.removeListener('meetingBar:expand', handler)
+  },
+  onMeetingBarStop: (callback: () => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('meetingBar:stop', handler)
+    return () => ipcRenderer.removeListener('meetingBar:stop', handler)
+  },
   checkIsAdmin: () => ipcRenderer.invoke('admin:isAdmin'),
   ssoLoginBoth: (email: string, password: string) =>
     ipcRenderer.invoke('sso:loginBoth', email, password),

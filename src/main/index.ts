@@ -189,6 +189,7 @@ let contentWindow: BrowserWindow | null = null
 let spotlightWindow: BrowserWindow | null = null
 let voiceInputWindow: BrowserWindow | null = null
 let widgetWindow: BrowserWindow | null = null
+let meetingBarWindow: BrowserWindow | null = null
 let widgetExpanded = false
 let tray: Tray | null = null
 let isQuiting = false
@@ -707,6 +708,63 @@ async function toggleWidgetMode(): Promise<void> {
   updateTray()
 }
 
+// ─── Meeting Bar ────────────────────────────────────────
+// 회의 녹음을 "최소화"하면 뜨는 작은 알약형 always-on-top 바 창. 녹음 자체는
+// (숨겨진) 메인 창에서 계속 돌고, 이 바는 경과시간만 비추고 펼치기/종료 신호를
+// 메인 렌더러로 되돌려준다. widget/voice-input 창의 구성 옵션을 그대로 따른다.
+const MEETING_BAR_WIDTH = 240
+const MEETING_BAR_HEIGHT = 56
+const MEETING_BAR_MARGIN = 18
+
+function createMeetingBarWindow(): BrowserWindow {
+  const { screen } = require('electron')
+  const { x, y, width, height } = screen.getPrimaryDisplay().workArea
+
+  meetingBarWindow = new BrowserWindow({
+    x: x + width - MEETING_BAR_WIDTH - MEETING_BAR_MARGIN,
+    y: y + height - MEETING_BAR_HEIGHT - MEETING_BAR_MARGIN,
+    width: MEETING_BAR_WIDTH,
+    height: MEETING_BAR_HEIGHT,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    show: false,
+    focusable: true,
+    icon: path.join(__dirname, 'assets/icon.png'),
+    webPreferences: {
+      preload: join(__dirname, '../preload/meeting-bar-preload.js'),
+      sandbox: false,
+      webviewTag: false
+    }
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    meetingBarWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/meeting-bar.html`)
+  } else {
+    meetingBarWindow.loadFile(join(__dirname, '../renderer/meeting-bar.html'))
+  }
+
+  meetingBarWindow.on('ready-to-show', () => {
+    meetingBarWindow?.show()
+  })
+
+  meetingBarWindow.on('closed', () => {
+    meetingBarWindow = null
+  })
+
+  return meetingBarWindow
+}
+
+function closeMeetingBar(): void {
+  if (meetingBarWindow && !meetingBarWindow.isDestroyed()) {
+    meetingBarWindow.close()
+  }
+  meetingBarWindow = null
+}
+
 // ─── Windows ────────────────────────────────────────────
 
 const DEFAULT_WINDOW_WIDTH = 1280
@@ -778,7 +836,11 @@ function createMainWindow(show = true): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      webviewTag: true
+      webviewTag: true,
+      // 회의 녹음 중 이 창을 hide() 하고 플로팅 바(meeting-bar)로 접어도
+      // 녹음 타이머/오디오가 스로틀되면 안 된다 — 숨긴 창의 백그라운드
+      // 스로틀링을 끈다.
+      backgroundThrottling: false
     }
   }
 
@@ -2042,7 +2104,13 @@ if (!gotTheLock) {
     // 바꿔 넘긴 것.
     ipcMain.handle(
       'meeting:upload',
-      async (_event, title: string, audioBuffer: ArrayBuffer, mimeType: string) => {
+      async (
+        _event,
+        title: string,
+        audioBuffer: ArrayBuffer,
+        mimeType: string,
+        options?: { saveAudio?: boolean; emails?: string; slackChannel?: string }
+      ) => {
         const session = await loginToMailAssistant()
         if (!session) return { ok: false, error: 'SSO 로그인 정보를 먼저 저장해주세요 (Settings).' }
 
@@ -2050,6 +2118,10 @@ if (!gotTheLock) {
         const ext = mimeType.includes('webm') ? 'webm' : 'ogg'
         form.append('audio', new Blob([audioBuffer], { type: mimeType }), `meeting.${ext}`)
         form.append('title', title || '')
+        // 노션식 옵션: 음성 원본 저장(기본 꺼짐), 이메일 전송, 슬랙 채널 공유.
+        if (options?.saveAudio) form.append('save_audio', 'true')
+        if (options?.emails) form.append('emails', options.emails)
+        if (options?.slackChannel) form.append('slack_channel', options.slackChannel)
 
         try {
           const res = await fetch(`${session.base}/api/meeting/transcribe`, {
@@ -2102,6 +2174,49 @@ if (!gotTheLock) {
         }
       }
     )
+
+    // Meeting bar (floating pill shown while a recording is minimized)
+    // 렌더러(메인 창)에서 최소화 → 바 창을 띄우고 메인 창을 숨긴다.
+    ipcMain.handle('meetingBar:show', () => {
+      if (!meetingBarWindow || meetingBarWindow.isDestroyed()) {
+        createMeetingBarWindow()
+      } else {
+        meetingBarWindow.show()
+      }
+      mainWindow?.hide()
+    })
+
+    // 메인 렌더러가 1초마다 보내는 경과시간/상태를 바 창으로 전달.
+    ipcMain.on('meetingBar:update', (_event, elapsed: number, phase: string) => {
+      if (meetingBarWindow && !meetingBarWindow.isDestroyed()) {
+        meetingBarWindow.webContents.send('meetingBar:data', { elapsed, phase })
+      }
+    })
+
+    // 녹음이 끝나거나 컴포넌트가 사라질 때 고아 창 방지용으로 바를 닫는다.
+    ipcMain.handle('meetingBar:hide', () => {
+      closeMeetingBar()
+    })
+
+    // 바의 "펼치기" → 메인 창 복귀 + 바 닫기 + 렌더러에 펼침 통지.
+    ipcMain.handle('meetingBar:expand', () => {
+      closeMeetingBar()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show()
+        mainWindow.focus()
+        mainWindow.webContents.send('meetingBar:expand')
+      }
+    })
+
+    // 바의 "종료" → 메인 창 복귀 + 바 닫기 + 렌더러에 정지 신호(stopToOptions).
+    ipcMain.handle('meetingBar:stop', () => {
+      closeMeetingBar()
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show()
+        mainWindow.focus()
+        mainWindow.webContents.send('meetingBar:stop')
+      }
+    })
 
     // Updater
     ipcMain.handle('updater:check', () => checkForUpdates())
@@ -2830,6 +2945,10 @@ if (!gotTheLock) {
       widgetWindow.destroy()
     }
     widgetWindow = null
+    if (meetingBarWindow && !meetingBarWindow.isDestroyed()) {
+      meetingBarWindow.destroy()
+    }
+    meetingBarWindow = null
     tray?.destroy()
     tray = null
   })

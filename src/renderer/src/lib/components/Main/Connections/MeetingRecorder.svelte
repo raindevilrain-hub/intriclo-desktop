@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { tick, onDestroy } from 'svelte'
   import { fade, scale } from 'svelte/transition'
 
   interface Props {
@@ -8,13 +8,26 @@
 
   let { onClose }: Props = $props()
 
-  type Phase = 'idle' | 'recording' | 'uploading' | 'done' | 'error'
+  // idle → recording → options(정리 옵션) → uploading → done  (error 는 어디서든)
+  type Phase = 'idle' | 'recording' | 'options' | 'uploading' | 'done' | 'error'
 
   let phase = $state<Phase>('idle')
   let title = $state('')
   let elapsedSec = $state(0)
   let errorMsg = $state('')
-  let result = $state<{ summary?: string; saved_to_kb?: boolean; slack_dm_sent?: boolean } | null>(null)
+  let result = $state<{
+    summary?: string
+    saved_to_kb?: boolean
+    slack_dm_sent?: boolean
+    audio_saved?: boolean
+    email_sent?: boolean
+    slack_channel_sent?: boolean
+  } | null>(null)
+
+  // 정리 옵션(정지 직전 단계에서 받는 공유 설정)
+  let saveAudio = $state(false)
+  let emails = $state('')
+  let slackChannel = $state('')
 
   let minimized = $state(false)
   let transcript = $state<string[]>([])
@@ -131,7 +144,11 @@
 
       phase = 'recording'
       elapsedSec = 0
-      timerHandle = setInterval(() => (elapsedSec += 1), 1000)
+      timerHandle = setInterval(() => {
+        elapsedSec += 1
+        // 플로팅 바가 떠 있는 동안(최소화)만 경과시간을 바 창으로 보낸다.
+        if (minimized) window.electronAPI.meetingBarUpdate(elapsedSec, phase)
+      }, 1000)
     } catch (e: any) {
       errorMsg = '녹음을 시작하지 못했습니다: ' + (e?.message ?? e)
       phase = 'error'
@@ -140,10 +157,19 @@
     }
   }
 
-  const stopRecording = async () => {
+  const defaultTitle = () => {
+    const d = new Date()
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `회의 ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+
+  // 녹음 정지 → 곧장 업로드하지 않고 '정리 옵션' 단계로. 스트림/레코더는 여기서
+  // 완전히 정리하고, 모아둔 chunks 는 startUpload 에서 blob 으로 합친다.
+  const stopToOptions = async () => {
     if (!mediaRecorder) return
     if (timerHandle) clearInterval(timerHandle)
     minimized = false
+    window.electronAPI.meetingBarHide()
     stopSegmentRecorder()
 
     const stopped = new Promise<void>((resolve) => {
@@ -153,11 +179,20 @@
     await stopped
     stopAllTracks()
 
+    if (!title.trim()) title = defaultTitle()
+    phase = 'options'
+  }
+
+  const startUpload = async () => {
     phase = 'uploading'
     try {
       const blob = new Blob(chunks, { type: 'audio/webm' })
       const buf = await blob.arrayBuffer()
-      const res = await window.electronAPI.meetingUpload(title, buf, 'audio/webm')
+      const res = await window.electronAPI.meetingUpload(title.trim() || defaultTitle(), buf, 'audio/webm', {
+        saveAudio,
+        emails: emails.trim(),
+        slackChannel: slackChannel.trim()
+      })
       if (res?.ok) {
         result = res
         phase = 'done'
@@ -177,137 +212,296 @@
     return `${m}:${String(s).padStart(2, '0')}`
   }
 
+  // 최소화 = 앱 창을 내리고, 항상 위에 뜨는 별도 플로팅 바 창을 띄운다.
+  // 녹음은 이 컴포넌트(=메인 렌더러)에서 계속 돈다 → 메인 창은 hide 만.
+  const minimize = () => {
+    minimized = true
+    window.electronAPI.meetingBarShow()
+    window.electronAPI.meetingBarUpdate(elapsedSec, phase) // 1초 기다리지 않고 즉시 표시
+  }
+
+  // 바 창에서 온 신호: 펼치기 → 다시 큰 화면, 종료 → 정지(옵션 단계로).
+  // (메인 프로세스가 이미 메인 창 show 와 바 닫기는 처리했다.)
+  const offBarExpand = window.electronAPI.onMeetingBarExpand(() => {
+    minimized = false
+  })
+  const offBarStop = window.electronAPI.onMeetingBarStop(() => {
+    void stopToOptions()
+  })
+
+  // 컴포넌트가 사라지면 고아 바 창을 반드시 닫는다.
+  onDestroy(() => {
+    offBarExpand?.()
+    offBarStop?.()
+    window.electronAPI.meetingBarHide()
+  })
+
   const close = () => {
     if (phase === 'recording') {
-      if (!confirm('녹음 중입니다. 저장하지 않고 닫을까요?')) return
-      stopSegmentRecorder()
-      mediaRecorder?.stop()
-      stopAllTracks()
-      if (timerHandle) clearInterval(timerHandle)
+      // 녹음 중 닫기/오버레이 클릭은 종료가 아니라 최소화 — 실수로 닫아도
+      // 녹음이 끊기지 않게. 진짜 종료는 명시적 '정지' 버튼(stopToOptions)으로만.
+      minimize()
+      return
+    }
+    if (phase === 'uploading') {
+      if (!confirm('정리하는 중이에요. 닫을까요?')) return
+    } else if (phase === 'options') {
+      if (!confirm('아직 정리를 시작하지 않았어요. 이 녹음을 버리고 닫을까요?')) return
     }
     onClose()
   }
+
+  // summary 는 마크다운(요약/주요논의/결정사항/액션아이템). 별도 라이브러리 없이
+  // 줄 단위로 헤딩/불릿/문단만 구분해 노션식 위계로 렌더한다.
+  const parsed = $derived.by(() => {
+    const md = result?.summary ?? ''
+    return md.split('\n').map((raw) => {
+      const l = raw.trim()
+      if (!l) return { kind: 'space' as const, text: '' }
+      if (l.startsWith('#')) return { kind: 'h' as const, text: l.replace(/^#+\s*/, '') }
+      if (/^([-*•]|\d+\.)\s/.test(l)) return { kind: 'li' as const, text: l.replace(/^([-*•]|\d+\.)\s+/, '') }
+      return { kind: 'p' as const, text: l }
+    })
+  })
+
+  // 완료 화면에서 무엇이 전송/저장됐는지 체크로 요약.
+  const shareStatus = $derived.by(() => {
+    const r = result
+    if (!r) return [] as string[]
+    return (
+      [
+        [r.saved_to_kb, '지식베이스에 저장'],
+        [r.audio_saved, '음성 원본 저장'],
+        [r.email_sent, '이메일 전송'],
+        [r.slack_channel_sent, '슬랙 채널 공유'],
+        [r.slack_dm_sent, '슬랙 DM 전송']
+      ] as const
+    )
+      .filter(([ok]) => ok)
+      .map(([, label]) => label)
+  })
 </script>
 
+<!-- **볼드** 만 안전하게(문자열 분할, {@html} 미사용) 인라인 강조 -->
+{#snippet inline(text: string)}{#each text.split('**') as seg, i}<span class:font-semibold={i % 2 === 1}>{seg}</span>{/each}{/snippet}
+
 {#if minimized && phase === 'recording'}
-  <!-- 최소화(위젯) 모드: 오버레이 없이 작은 바만 남긴다. 컴포넌트는 계속
-       마운트된 상태라 녹음과 자막 수집이 그대로 이어진다. -->
-  <div
-    class="fixed bottom-4 right-4 z-[100] flex items-center gap-2.5 rounded-2xl bg-white dark:bg-gray-950 px-3 py-2 shadow-2xl border border-black/[0.06] dark:border-white/[0.08]"
-    transition:fade={{ duration: 150 }}
-  >
-    <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-    <span class="text-[12px] font-mono text-[#1d1d1f] dark:text-[#fafafa]">{formatTime(elapsedSec)}</span>
-    <button
-      class="rounded-lg bg-black/[0.06] dark:bg-white/[0.08] px-2 py-1 text-[11px] opacity-70 transition-all active:scale-[0.98] border-none cursor-pointer"
-      onclick={() => (minimized = false)}
-    >
-      펼치기
-    </button>
-    <button
-      class="rounded-lg bg-red-500 px-2 py-1 text-[11px] font-medium text-white transition-all active:scale-[0.98] border-none cursor-pointer"
-      onclick={stopRecording}
-    >
-      종료
-    </button>
-  </div>
+  <!-- 최소화 시 UI 는 별도 always-on-top 플로팅 바 창(meeting-bar)이 담당한다.
+       메인 창은 hide 되지만 이 컴포넌트는 계속 마운트돼 녹음/자막이 이어진다.
+       그래서 여기선 아무것도 그리지 않는다. -->
 {:else}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 z-[100] flex items-center justify-center"
     transition:fade={{ duration: 150 }}
-    onmousedown={phase === 'idle' || phase === 'done' || phase === 'error' ? close : undefined}
+    onmousedown={phase === 'idle' || phase === 'done' || phase === 'error' || phase === 'recording' ? close : undefined}
   >
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
 
     <div
-      class="relative mx-4 w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-gray-950 px-6 py-6"
+      class="relative mx-4 w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden rounded-3xl bg-white shadow-2xl dark:bg-gray-950"
       transition:scale={{ start: 0.97, duration: 180 }}
       onmousedown={(e) => e.stopPropagation()}
     >
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between px-6 pt-5 pb-1">
         <h2 class="text-[14px] font-semibold text-[#1d1d1f] dark:text-[#fafafa]">회의 녹음</h2>
         {#if phase === 'recording'}
           <button
             class="rounded-lg bg-black/[0.06] dark:bg-white/[0.08] px-2 py-1 text-[11px] opacity-70 transition-all active:scale-[0.98] border-none cursor-pointer"
-            onclick={() => (minimized = true)}
+            onclick={minimize}
           >
             최소화
           </button>
         {/if}
       </div>
 
-      {#if phase === 'idle'}
-        <p class="mt-1 text-[11px] opacity-40">내 마이크 + 시스템 오디오를 함께 녹음합니다.</p>
-        <input
-          type="text"
-          bind:value={title}
-          placeholder="회의 제목 (선택)"
-          class="w-full mt-4 py-2 text-[13px] text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-30 outline-none bg-black/[0.04] dark:bg-white/[0.06] border-none rounded-xl px-3"
-        />
-        <button
-          class="w-full mt-4 rounded-xl bg-gray-900 dark:bg-white px-4 py-2.5 text-sm font-medium text-white dark:text-gray-900 transition-all active:scale-[0.98] border-none cursor-pointer"
-          onclick={startRecording}
-        >
-          녹음 시작
-        </button>
-      {:else if phase === 'recording'}
-        <div class="mt-6 flex flex-col items-center gap-3">
-          <div class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
-          <div class="text-2xl font-mono text-[#1d1d1f] dark:text-[#fafafa]">{formatTime(elapsedSec)}</div>
-          <div
-            bind:this={transcriptEl}
-            class="w-full mt-1 h-40 overflow-y-auto whitespace-pre-wrap text-[12px] opacity-70 bg-black/[0.03] dark:bg-white/[0.04] rounded-xl p-3"
-          >
-            {#if transcript.length === 0}
-              <span class="opacity-50">말하는 내용이 곧 여기 표시돼요…</span>
-            {:else}
-              {transcript.join(' ')}
-            {/if}
+      <div class="flex-1 overflow-y-auto px-6 pb-6">
+        {#if phase === 'idle'}
+          <!-- 시작: 녹음 버튼이 주인공. 제목은 선택. -->
+          <div class="flex flex-col items-center pt-6 pb-2">
+            <input
+              type="text"
+              bind:value={title}
+              placeholder="회의 제목 (선택)"
+              class="w-full text-center py-1.5 text-[15px] font-medium text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-25 placeholder:font-normal outline-none bg-transparent border-none"
+            />
+            <button
+              class="mt-8 w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg ring-8 ring-red-500/10 transition-all hover:ring-red-500/20 active:scale-[0.96] border-none cursor-pointer"
+              onclick={startRecording}
+              aria-label="녹음 시작"
+            >
+              <span class="w-5 h-5 rounded-full bg-white"></span>
+            </button>
+            <p class="mt-4 text-[12px] font-medium text-[#1d1d1f] dark:text-[#fafafa]">녹음 시작</p>
+            <p class="mt-1 text-[11px] opacity-40 text-center">내 마이크 + 시스템 오디오를 함께 녹음합니다.</p>
           </div>
-          <button
-            class="w-full mt-2 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-medium text-white transition-all active:scale-[0.98] border-none cursor-pointer"
-            onclick={stopRecording}
-          >
-            녹음 종료 및 정리
-          </button>
-        </div>
-      {:else if phase === 'uploading'}
-        <div class="mt-6 flex flex-col items-center gap-3 py-4">
-          <span
-            class="w-6 h-6 rounded-full border-2 border-black/10 dark:border-white/10 border-t-black/60 dark:border-t-white/60 animate-spin inline-block"
-          ></span>
-          <p class="text-[12px] opacity-50">전사하고 정리하는 중… (몇 분 걸릴 수 있어요)</p>
-        </div>
-      {:else if phase === 'done'}
-        <div class="mt-4">
-          <p class="text-[12px] text-green-600 dark:text-green-400">
-            완료됐어요{result?.slack_dm_sent ? ' — 슬랙 DM으로 보냈어요' : ''}{result?.saved_to_kb
-              ? ', 지식베이스에도 저장했어요'
-              : ''}.
-          </p>
-          {#if result?.summary}
-            <pre class="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap text-[12px] opacity-70 bg-black/[0.03] dark:bg-white/[0.04] rounded-xl p-3">{result.summary}</pre>
-          {/if}
-          <button
-            class="w-full mt-4 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] px-4 py-2 text-sm opacity-70 transition-all border-none cursor-pointer"
-            onclick={close}
-          >
-            닫기
-          </button>
-        </div>
-      {:else if phase === 'error'}
-        <div class="mt-4">
-          <p class="text-[12px] text-red-500">{errorMsg}</p>
-          <button
-            class="w-full mt-4 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] px-4 py-2 text-sm opacity-70 transition-all border-none cursor-pointer"
-            onclick={close}
-          >
-            닫기
-          </button>
-        </div>
-      {/if}
+        {:else if phase === 'recording'}
+          <!-- 녹음 중: 실시간 자막이 화면 중심. -->
+          <div class="flex flex-col">
+            <div class="flex items-center justify-center gap-2 pt-2 pb-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+              <span class="text-xl font-mono tabular-nums text-[#1d1d1f] dark:text-[#fafafa]">{formatTime(elapsedSec)}</span>
+            </div>
+            <div
+              bind:this={transcriptEl}
+              class="w-full h-56 overflow-y-auto whitespace-pre-wrap text-[13px] leading-relaxed text-[#1d1d1f]/80 dark:text-[#fafafa]/80 bg-black/[0.03] dark:bg-white/[0.04] rounded-2xl p-4"
+            >
+              {#if transcript.length === 0}
+                <span class="opacity-40">말하는 내용이 곧 여기 받아쓰기로 표시돼요…</span>
+              {:else}
+                {transcript.join(' ')}
+              {/if}
+            </div>
+            <button
+              class="w-full mt-4 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-medium text-white transition-all active:scale-[0.98] border-none cursor-pointer"
+              onclick={stopToOptions}
+            >
+              녹음 정지
+            </button>
+          </div>
+        {:else if phase === 'options'}
+          <!-- 정리 옵션: 정지 직후, 정리(업로드) 전에 공유/저장 설정을 받는다. -->
+          <div class="flex flex-col gap-4 pt-1">
+            <p class="text-[11px] opacity-40">정리를 시작하기 전에 제목과 공유 방법을 확인하세요.</p>
+
+            <div>
+              <label for="mr-title" class="block text-[12px] font-medium text-[#1d1d1f] dark:text-[#fafafa] mb-1.5">제목</label>
+              <input
+                id="mr-title"
+                type="text"
+                bind:value={title}
+                placeholder={defaultTitle()}
+                class="w-full py-2 text-[13px] text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-30 outline-none bg-black/[0.04] dark:bg-white/[0.06] border-none rounded-xl px-3"
+              />
+            </div>
+
+            {#if transcript.length > 0}
+              <div>
+                <p class="text-[11px] opacity-40 mb-1.5">미리보기 자막 · 최종 요약은 정리 후 다시 생성돼요</p>
+                <div class="max-h-28 overflow-y-auto whitespace-pre-wrap text-[12px] leading-relaxed opacity-60 bg-black/[0.03] dark:bg-white/[0.04] rounded-xl p-3">
+                  {transcript.join(' ')}
+                </div>
+              </div>
+            {/if}
+
+            <label class="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                bind:checked={saveAudio}
+                class="mt-0.5 w-4 h-4 accent-gray-900 dark:accent-white cursor-pointer"
+              />
+              <span>
+                <span class="block text-[12px] font-medium text-[#1d1d1f] dark:text-[#fafafa]">음성 원본도 저장</span>
+                <span class="block text-[11px] opacity-40 mt-0.5">체크하면 회의 원음이 그대로 남습니다.</span>
+              </span>
+            </label>
+
+            <div>
+              <label for="mr-emails" class="block text-[12px] font-medium text-[#1d1d1f] dark:text-[#fafafa] mb-1.5">이메일로 보내기</label>
+              <input
+                id="mr-emails"
+                type="text"
+                bind:value={emails}
+                placeholder="a@x.com, b@y.com (쉼표로 구분)"
+                class="w-full py-2 text-[13px] text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-30 outline-none bg-black/[0.04] dark:bg-white/[0.06] border-none rounded-xl px-3"
+              />
+            </div>
+
+            <div>
+              <label for="mr-slack" class="block text-[12px] font-medium text-[#1d1d1f] dark:text-[#fafafa] mb-1.5">슬랙 채널로 공유</label>
+              <input
+                id="mr-slack"
+                type="text"
+                bind:value={slackChannel}
+                placeholder="#채널명 (비우면 본인 DM으로만)"
+                class="w-full py-2 text-[13px] text-[#1d1d1f] dark:text-[#fafafa] placeholder:opacity-30 outline-none bg-black/[0.04] dark:bg-white/[0.06] border-none rounded-xl px-3"
+              />
+            </div>
+
+            <div class="flex gap-2 pt-1">
+              <button
+                class="flex-1 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] px-4 py-2.5 text-sm opacity-70 transition-all active:scale-[0.98] border-none cursor-pointer"
+                onclick={close}
+              >
+                취소
+              </button>
+              <button
+                class="flex-[2] rounded-xl bg-gray-900 dark:bg-white px-4 py-2.5 text-sm font-medium text-white dark:text-gray-900 transition-all active:scale-[0.98] border-none cursor-pointer"
+                onclick={startUpload}
+              >
+                정리 시작
+              </button>
+            </div>
+          </div>
+        {:else if phase === 'uploading'}
+          <div class="flex flex-col items-center gap-3 py-10">
+            <span
+              class="w-6 h-6 rounded-full border-2 border-black/10 dark:border-white/10 border-t-black/60 dark:border-t-white/60 animate-spin inline-block"
+            ></span>
+            <p class="text-[13px] font-medium text-[#1d1d1f] dark:text-[#fafafa]">AI가 회의를 정리하고 있어요</p>
+            <p class="text-[11px] opacity-40">전사하고 요약하는 중… 몇 분 걸릴 수 있어요.</p>
+          </div>
+        {:else if phase === 'done'}
+          <div class="flex flex-col pt-1">
+            <div class="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+              <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z" clip-rule="evenodd" />
+              </svg>
+              <span class="text-[13px] font-medium">정리가 끝났어요</span>
+            </div>
+
+            {#if result?.summary}
+              <div class="mt-3 max-h-72 overflow-y-auto bg-black/[0.03] dark:bg-white/[0.04] rounded-2xl px-4 py-3 text-[#1d1d1f] dark:text-[#fafafa]">
+                {#each parsed as line}
+                  {#if line.kind === 'space'}
+                    <div class="h-2"></div>
+                  {:else if line.kind === 'h'}
+                    <h3 class="mt-3 first:mt-0 mb-1 text-[13px] font-semibold">{@render inline(line.text)}</h3>
+                  {:else if line.kind === 'li'}
+                    <div class="flex gap-2 text-[12px] leading-relaxed opacity-80">
+                      <span class="opacity-40 select-none">•</span>
+                      <span>{@render inline(line.text)}</span>
+                    </div>
+                  {:else}
+                    <p class="text-[12px] leading-relaxed opacity-80">{@render inline(line.text)}</p>
+                  {/if}
+                {/each}
+              </div>
+            {/if}
+
+            {#if shareStatus.length > 0}
+              <div class="mt-3 flex flex-col gap-1.5">
+                {#each shareStatus as label}
+                  <div class="flex items-center gap-1.5 text-[12px] opacity-70">
+                    <svg class="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0l-3.5-3.5a1 1 0 011.4-1.4l2.8 2.8 6.8-6.8a1 1 0 011.4 0z" clip-rule="evenodd" />
+                    </svg>
+                    <span class="text-[#1d1d1f] dark:text-[#fafafa]">{label}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            <button
+              class="w-full mt-4 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] px-4 py-2 text-sm opacity-70 transition-all active:scale-[0.98] border-none cursor-pointer"
+              onclick={close}
+            >
+              닫기
+            </button>
+          </div>
+        {:else if phase === 'error'}
+          <div class="pt-1">
+            <p class="text-[12px] text-red-500">{errorMsg}</p>
+            <button
+              class="w-full mt-4 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] px-4 py-2 text-sm opacity-70 transition-all border-none cursor-pointer"
+              onclick={close}
+            >
+              닫기
+            </button>
+          </div>
+        {/if}
+      </div>
     </div>
   </div>
 {/if}
