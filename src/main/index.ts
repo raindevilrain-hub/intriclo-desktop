@@ -2175,15 +2175,17 @@ if (!gotTheLock) {
       }
     )
 
-    // Meeting bar (floating pill shown while a recording is minimized)
-    // 렌더러(메인 창)에서 최소화 → 바 창을 띄우고 메인 창을 숨긴다.
+    // Meeting bar (floating pill shown while a recording is collapsed)
+    // 렌더러(메인 창)에서 최소화 → 항상 위에 뜨는 바 창을 띄운다.
+    // 메인 창은 숨기지 않는다 — 노션처럼 녹음 중에도 인트리클로 다른 기능을
+    // 계속 쓸 수 있어야 하기 때문. 바는 alwaysOnTop 이라 다른 앱(줌 등) 위에도
+    // 그대로 떠서 "녹음 중" 표시가 어디서든 보인다.
     ipcMain.handle('meetingBar:show', () => {
       if (!meetingBarWindow || meetingBarWindow.isDestroyed()) {
         createMeetingBarWindow()
       } else {
         meetingBarWindow.show()
       }
-      mainWindow?.hide()
     })
 
     // 메인 렌더러가 1초마다 보내는 경과시간/상태를 바 창으로 전달.

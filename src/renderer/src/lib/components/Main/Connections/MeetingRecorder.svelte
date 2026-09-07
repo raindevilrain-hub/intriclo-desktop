@@ -159,9 +159,13 @@
       elapsedSec = 0
       timerHandle = setInterval(() => {
         elapsedSec += 1
-        // 플로팅 바가 떠 있는 동안(최소화)만 경과시간을 바 창으로 보낸다.
+        // 플로팅 바가 떠 있는 동안만 경과시간을 바 창으로 보낸다.
         if (minimized) window.electronAPI.meetingBarUpdate(elapsedSec, phase)
       }, 1000)
+      // 노션처럼: 녹음이 시작되면 곧바로 플로팅 바로 접어, 큰 모달이 앱을 막지
+      // 않게 한다. 메인 창은 숨기지 않으므로(메인 프로세스에서 hide 제거) 인트리클로
+      // 다른 기능을 계속 쓰면서 녹음할 수 있다. 자막/정지는 바를 펼치면 나온다.
+      minimize()
     } catch (e: any) {
       errorMsg = '녹음을 시작하지 못했습니다: ' + (e?.message ?? e)
       phase = 'error'
