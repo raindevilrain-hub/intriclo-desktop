@@ -115,14 +115,27 @@
       // 나가는 소리)를 각각 잡아서 Web Audio API로 하나로 섞는다. 시스템
       // 오디오 쪽은 main 프로세스의 setDisplayMediaRequestHandler 가 화면
       // 선택 UI 없이 바로 응답해준다(Windows 전용).
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // 마이크(내 목소리)와 시스템 오디오(상대방 목소리) 둘 다 선택사항으로
+      // 잡는다. 마이크 없는 PC(데스크톱 등)에서도 시스템 오디오만으로 회의가
+      // 녹음돼야 하므로, 각각 실패해도 넘어가고 둘 다 없을 때만 에러를 낸다.
+      let micStream: MediaStream | null = null
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch (e) {
+        console.warn('마이크 캡처 실패 (시스템 오디오만으로 계속):', e)
+      }
       let systemStream: MediaStream | null = null
       try {
         systemStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false } as any)
       } catch (e) {
         console.warn('시스템 오디오 캡처 실패 (마이크만으로 계속):', e)
       }
-      allStreams = systemStream ? [micStream, systemStream] : [micStream]
+      allStreams = [micStream, systemStream].filter((s): s is MediaStream => s !== null)
+      if (allStreams.every((s) => s.getAudioTracks().length === 0)) {
+        throw new Error(
+          '마이크와 시스템 오디오를 모두 사용할 수 없습니다. 마이크를 연결하거나 오디오 권한을 확인해주세요.'
+        )
+      }
 
       audioContext = new AudioContext()
       const dest = audioContext.createMediaStreamDestination()
