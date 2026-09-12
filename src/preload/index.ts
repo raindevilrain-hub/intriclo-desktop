@@ -173,6 +173,7 @@ const api = {
   updateConnection: (id: string, updates: any) => ipcRenderer.invoke('connections:update', id, updates),
   setDefaultConnection: (id: string) => ipcRenderer.invoke('connections:setDefault', id),
   connectTo: (id: string) => ipcRenderer.invoke('connections:connect', id),
+  reconnectNas: () => ipcRenderer.invoke('connections:resolveNas'),
   openExternal: (url: string) => ipcRenderer.invoke('connections:openExternal', url),
   ssoSave: (email: string, password: string) => ipcRenderer.invoke('sso:save', email, password),
   ssoClear: () => ipcRenderer.invoke('sso:clear'),

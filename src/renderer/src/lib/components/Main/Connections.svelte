@@ -510,7 +510,20 @@
         return
       }
       if (data.type === 'connections:changed') {
-        connections.set(data.data ?? [])
+        const list = data.data ?? []
+        connections.set(list)
+        // 이미 열려 있는 웹뷰도 최신 주소로 맞춘다 — 예를 들어 절전모드
+        // 복귀 후 NAS 주소가 사내망↔Tailscale 로 바뀌었을 때, 열려 있던
+        // 탭이 수동 재연결/재시작 없이도 새 주소로 옮겨가도록 한다.
+        let openConnectionsChanged = false
+        for (const c of list) {
+          if (openConnections.has(c.id) && openConnections.get(c.id) !== c.url) {
+            openConnections.set(c.id, c.url)
+            if (activeConnectionId === c.id) connectedUrl = c.url
+            openConnectionsChanged = true
+          }
+        }
+        if (openConnectionsChanged) openConnections = new Map(openConnections)
         return
       }
 
