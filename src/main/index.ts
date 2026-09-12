@@ -16,7 +16,8 @@ import {
   ipcMain,
   Tray,
   dialog,
-  safeStorage
+  safeStorage,
+  powerMonitor
 } from 'electron'
 import path, { join } from 'path'
 import { readFile, writeFile, unlink, statfs } from 'fs/promises'
@@ -1384,6 +1385,25 @@ const sendToRenderer = (type: string, data?: any) => {
   mainWindow?.webContents.send('main:data', { type, data })
 }
 
+// 시작할 때 말고도(절전모드 복귀, 사용자가 직접 "재연결") NAS 주소를
+// 다시 찔러봐야 하는 순간마다 이걸 부른다. 실제로 주소가 바뀐 경우에만
+// CONFIG/트레이/렌더러를 갱신한다 — 렌더러는 connections:changed 를 받아
+// 이미 열려 있는 웹뷰의 src 를 새 주소로 바꿔치기한다(Connections.svelte).
+const reconcileNasHost = async (): Promise<boolean> => {
+  try {
+    const changed = await resolveNasHost()
+    if (changed) {
+      CONFIG = await getConfig()
+      updateTray()
+      sendToRenderer('connections:changed', CONFIG.connections)
+    }
+    return changed
+  } catch (err) {
+    log.warn('reconcileNasHost 실패:', err)
+    return false
+  }
+}
+
 // ─── App Lifecycle ──────────────────────────────────────
 
 const gotTheLock = app.requestSingleInstanceLock()
@@ -1844,6 +1864,13 @@ if (!gotTheLock) {
 
     ipcMain.handle('validate:url', async (_event, url: string) => {
       return await validateRemoteUrl(url)
+    })
+
+    // "재시도" 버튼이 부른다 — 저장된 주소로 그냥 새로고침하기 전에, 지금
+    // 사내망/Tailscale 중 실제로 닿는 쪽이 바뀌었는지부터 다시 확인한다.
+    ipcMain.handle('connections:resolveNas', async () => {
+      await reconcileNasHost()
+      return CONFIG.connections
     })
 
     // ── 회사 계정 자동 로그인 (SSO) ──────────────────────────────
@@ -2942,6 +2969,15 @@ if (!gotTheLock) {
         mainWindow?.show()
         mainWindow?.focus()
       }
+    })
+
+    // 노트북이 절전모드에서 깨어나면 사내망/Tailscale 중 닿는 쪽이 시작할
+    // 때와 달라져 있을 수 있다(사무실을 나갔다/들어왔다, VPN 재연결 등) —
+    // 근데 지금까진 이 재확인이 앱 시작 시 딱 한 번뿐이라, 그 뒤로 바뀌면
+    // 완전히 재시작하기 전엔 영영 못 고쳤다("나스 연동이 또 끊김"의 원인).
+    // Tailscale 데몬이 터널을 다시 맺는 데 몇 초 걸릴 수 있어 살짝 늦춰서 찔러본다.
+    powerMonitor.on('resume', () => {
+      setTimeout(() => { reconcileNasHost() }, 3000)
     })
   })
 
