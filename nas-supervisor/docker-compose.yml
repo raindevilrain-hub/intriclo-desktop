@@ -1,0 +1,22 @@
+services:
+  claude-supervisor:
+    build: .
+    container_name: claude-nas-supervisor
+    restart: unless-stopped
+    volumes:
+      # 자격증명 + 세션 대화 이력. 반드시 영속 볼륨으로 둔다 — 없으면
+      # 컨테이너가 재시작될 때마다 로그인부터 다시 해야 하고, 대화 이력도
+      # 전부 사라진다.
+      - claude_home:/root/.claude
+      - ./claude-sessions.conf:/app/claude-sessions.conf:ro
+      # 나스의 실제 프로젝트 경로에 맞게 왼쪽(호스트 경로)을 수정한다.
+      # claude-sessions.conf의 project_dir은 오른쪽(컨테이너 경로) 기준으로 적는다.
+      - /volume1/docker:/data/projects
+      - ./logs:/data/logs
+      - ./run:/data/run
+    environment:
+      CHECK_INTERVAL: '300'
+      STAGGER_SECONDS: '20'
+
+volumes:
+  claude_home:
