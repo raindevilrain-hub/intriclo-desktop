@@ -3,20 +3,20 @@ services:
     build: .
     container_name: claude-nas-supervisor
     restart: unless-stopped
-    volumes:
-      # 자격증명 + 세션 대화 이력. 반드시 영속 볼륨으로 둔다 — 없으면
-      # 컨테이너가 재시작될 때마다 로그인부터 다시 해야 하고, 대화 이력도
-      # 전부 사라진다.
-      - claude_home:/root/.claude
-      - ./claude-sessions.conf:/app/claude-sessions.conf:ro
-      # 나스의 실제 프로젝트 경로에 맞게 왼쪽(호스트 경로)을 수정한다.
-      # claude-sessions.conf의 project_dir은 오른쪽(컨테이너 경로) 기준으로 적는다.
-      - /volume1/docker:/data/projects
-      - ./logs:/data/logs
-      - ./run:/data/run
     environment:
+      HOME: ${CLAUDE_HOME}
       CHECK_INTERVAL: '300'
       STAGGER_SECONDS: '20'
-
-volumes:
-  claude_home:
+    volumes:
+      # 호스트의 실제 ~/.claude를 컨테이너 안에도 "완전히 같은 경로"로 그대로
+      # 마운트한다 — 옮기지 않는다. Claude Code는 세션이 어느 프로젝트
+      # 것인지 실제 작업 경로 문자열 자체로 구분하므로(폴더 이름 = 경로의
+      # "/"를 "-"로 바꾼 것), 컨테이너 안에서 경로가 달라지면 슈퍼바이저가
+      # 이미 있는 세션을 못 찾고 자격증명도 안 먹힌다.
+      - ${CLAUDE_HOME}/.claude:${CLAUDE_HOME}/.claude
+      # claude-sessions.conf에 적은 프로젝트들이 실제로 들어있는 공통 상위
+      # 경로. 프로젝트가 여러 상위 경로에 흩어져 있으면 이런 줄을 그만큼
+      # 더 추가한다(예: - /volume2/projects:/volume2/projects).
+      - ${PROJECTS_ROOT}:${PROJECTS_ROOT}
+      - ./claude-sessions.conf:/app/claude-sessions.conf:ro
+      - ./logs:/data/logs

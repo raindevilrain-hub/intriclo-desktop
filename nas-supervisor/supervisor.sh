@@ -1,7 +1,8 @@
 #!/bin/bash
-# Container entrypoint. Launches every session in claude-sessions.conf
-# (staggered, so ~20 sessions don't all hit the API in the same second and
-# trip a rate limit), then loops forever re-running the same launch sweep.
+# Container entrypoint. Sweeps every project directory in
+# claude-sessions.conf through launch-session.sh (staggered, so a NAS with
+# 70+ managed projects doesn't hit the API in the same second and trip a
+# rate limit), then loops forever re-running the same sweep.
 #
 # launch-session.sh is itself idempotent (see its header comment), so this
 # loop doesn't need its own liveness bookkeeping — it just calls
@@ -22,15 +23,15 @@ STAGGER_SECONDS="${STAGGER_SECONDS:-20}"
 mkdir -p "$LOG_DIR"
 
 if [ ! -f "$CONF" ]; then
-  echo "$(date -Is) FATAL: $CONF not found — copy claude-sessions.conf.example to claude-sessions.conf and fill it in" \
+  echo "$(date -Is) FATAL: $CONF not found — copy claude-sessions.conf.example to claude-sessions.conf and fill it in (or run ./discover-sessions.sh > claude-sessions.conf on the NAS first)" \
     | tee -a "$LOG_DIR/supervisor.log"
   exit 1
 fi
 
 sweep() {
-  while IFS='|' read -r name project_dir uuid; do
-    [[ "$name" =~ ^#.*$ || -z "$name" ]] && continue
-    ./launch-session.sh "$name" "$project_dir" "$uuid"
+  while IFS= read -r project_dir; do
+    [[ "$project_dir" =~ ^#.*$ || -z "$project_dir" ]] && continue
+    ./launch-session.sh "$project_dir"
     sleep "$STAGGER_SECONDS"
   done < "$CONF"
 }
