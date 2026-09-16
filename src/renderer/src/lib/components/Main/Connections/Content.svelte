@@ -428,11 +428,27 @@
     const wv = document.querySelector(
       `webview[data-conn-id="${activeConnectionId}"]`
     ) as any
-    if (wv?.reload) {
-      webviewErrors.delete(activeConnectionId)
-      webviewErrors = new Map(webviewErrors)
+    if (!wv?.reload) return
+    webviewErrors.delete(activeConnectionId)
+    webviewErrors = new Map(webviewErrors)
+
+    // 그냥 새로고침하기 전에 사내망/Tailscale 중 닿는 쪽이 바뀌었는지부터
+    // 다시 확인한다 — 바뀌었다면 openConnections 갱신(connections:changed
+    // 수신, Connections.svelte)이 이 webview의 src를 새 주소로 이미
+    // 바꿔치기했을 것이므로, 그때는 여기서 또 reload할 필요가 없다.
+    const reconnectNas = window.electronAPI.reconnectNas
+    if (!reconnectNas) {
       wv.reload()
+      return
     }
+    const srcBeforeReconnect = wv.getAttribute('src')
+    reconnectNas()
+      .catch(() => {})
+      .finally(() => {
+        if (wv.getAttribute('src') === srcBeforeReconnect) {
+          wv.reload()
+        }
+      })
   }
 
   const openActiveInBrowser = () => {

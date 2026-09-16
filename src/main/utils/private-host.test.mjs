@@ -20,7 +20,8 @@ const isPrivateHost = eval(
 const PRIVATE = [
   '192.168.0.210', '10.0.0.5', '172.16.0.1', '172.31.255.254',
   '127.0.0.1', 'localhost', 'nas', 'synology.local', '169.254.1.1',
-  'fd00::1', 'fe80::1', '::1'
+  'fd00::1', 'fe80::1', '::1',
+  '100.83.167.66', '100.64.0.1', '100.127.255.254' // Tailscale CGNAT (NAS_TAILSCALE_HOST)
 ]
 const PUBLIC = [
   'github.com', 'objects.githubusercontent.com', 'slack.com',
@@ -28,7 +29,8 @@ const PUBLIC = [
   '8.8.8.8', '1.1.1.1',
   '172.15.0.1', '172.32.0.1',   // 172.16-31 바깥 = 공인 대역
   '192.169.0.1',                // 192.168 이 아님
-  '11.0.0.1'                    // 10.x 가 아님
+  '11.0.0.1',                   // 10.x 가 아님
+  '100.63.255.255', '100.128.0.1' // 100.64.0.0/10 바깥 = 공인 대역
 ]
 
 for (const h of PRIVATE) assert.equal(isPrivateHost(h), true, `${h} 는 private 이어야 함`)

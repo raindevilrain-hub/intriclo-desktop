@@ -812,6 +812,7 @@ export const isPrivateHost = (hostname: string): boolean => {
       a === 127 ||
       (a === 192 && b === 168) ||
       (a === 172 && b >= 16 && b <= 31) ||
+      (a === 100 && b >= 64 && b <= 127) || // Tailscale/CGNAT (100.64.0.0/10) — NAS_TAILSCALE_HOST lives here
       (a === 169 && b === 254) // link-local
     )
   }
@@ -1040,8 +1041,12 @@ export const setConfig = async (config: Partial<AppConfig>): Promise<void> => {
  *
  * 사용자가 직접 바꾼 커스텀 커넥션은 건드리지 않는다 — 우리 NAS의 두
  * 호스트 중 하나를 쓰고 있는 URL만 갈아끼운다.
+ *
+ * 앱 시작 시 한 번뿐 아니라 절전모드 복귀 후에도 다시 불러야 한다 —
+ * 반환값(true = 주소가 실제로 바뀜)으로 호출자가 그때만 열려 있는
+ * 웹뷰/트레이를 갱신하면 된다.
  */
-export const resolveNasHost = async (): Promise<void> => {
+export const resolveNasHost = async (): Promise<boolean> => {
   const reachable = async (host: string): Promise<boolean> => {
     try {
       const controller = new AbortController()
@@ -1062,7 +1067,7 @@ export const resolveNasHost = async (): Promise<void> => {
       : null
   if (!host) {
     log.warn('resolveNasHost: 사내망/Tailscale 둘 다 응답 없음 — 저장된 주소 그대로 둔다')
-    return
+    return false
   }
 
   const cfg = await getConfig()
@@ -1077,13 +1082,14 @@ export const resolveNasHost = async (): Promise<void> => {
   const changed =
     JSON.stringify(connections) !== JSON.stringify(cfg.connections) ||
     swap(cfg.mailAssistantUrl ?? '') !== cfg.mailAssistantUrl
-  if (!changed) return
+  if (!changed) return false
 
   await setConfig({
     connections,
     mailAssistantUrl: swap(cfg.mailAssistantUrl ?? '')
   })
   log.info(`resolveNasHost: NAS 주소를 ${host} 로 맞췄습니다`)
+  return true
 }
 
 export const resetApp = async (): Promise<void> => {
